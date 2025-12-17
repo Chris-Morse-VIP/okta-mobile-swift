@@ -159,6 +159,8 @@ public struct Token: Sendable, Codable, Equatable, Hashable, HasClaims, Expires 
         let request = Token.RefreshRequest(openIdConfiguration: try await client.openIdConfiguration(),
                                            clientConfiguration: client.configuration,
                                            refreshToken: refreshToken,
+                                           resource: "",
+                                           clientSecret: "",
                                            scope: scope?.joined(separator: " "),
                                            id: Token.RefreshRequest.placeholderId)
         let response = try await client.exchange(token: request)
