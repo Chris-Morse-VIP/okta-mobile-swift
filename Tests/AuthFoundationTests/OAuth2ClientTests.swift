@@ -563,6 +563,8 @@ final class OAuth2ClientTests: XCTestCase {
         let request = Token.RefreshRequest(openIdConfiguration: openIdConfiguration,
                                            clientConfiguration: clientConfiguration,
                                            refreshToken: "the-token",
+                                           resource: "",
+                                           clientSecret: "supersecret",
                                            scope: nil,
                                            id: "token-id")
         let parameters = try XCTUnwrap(request.bodyParameters as? [String: String])
@@ -578,7 +580,7 @@ final class OAuth2ClientTests: XCTestCase {
         urlSession.expect("https://example.com/oauth2/v1/token",
                           data: try data(from: .module, for: "token", in: "MockResponses"))
         
-        let token = try await client.refresh(token)
+        let token = try await client.refresh(token, clientSecret: "supersecret", resource: "")
         XCTAssertNotNil(token)
     }
 

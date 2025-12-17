@@ -41,6 +41,8 @@ extension Token {
         let openIdConfiguration: OpenIdConfiguration
         let clientConfiguration: OAuth2Client.Configuration
         let refreshToken: String
+        let resource: String
+        let clientSecret: String
         let scope: String?
         let id: String
         
@@ -169,6 +171,8 @@ extension Token.RefreshRequest: OAuth2APIRequest, APIRequestBody, APIParsingCont
         var result: [String: any APIRequestArgument] = [
             "grant_type": "refresh_token",
             "refresh_token": refreshToken,
+            "resource": resource,
+            "client_secret": clientSecret,
         ]
         result.merge(clientConfiguration.parameters(for: category))
 

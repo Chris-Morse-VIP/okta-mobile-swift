@@ -152,7 +152,7 @@ public final class OAuth2Client: UsesDelegateCollection {
     /// - Parameters:
     ///   - token: Token to refresh.
     ///   - scope: Optional array of scopes to request.
-    public func refresh(_ token: Token, scope: [String]? = nil) async throws -> Token {
+    public func refresh(_ token: Token, clientSecret: String, resource: String, scope: [String]? = nil) async throws -> Token {
         try await token.refreshAction.perform(reset: true) {
             guard let refreshToken = token.refreshToken else {
                 throw OAuth2Error.missingToken(type: .refreshToken)
@@ -161,6 +161,8 @@ public final class OAuth2Client: UsesDelegateCollection {
             let request = Token.RefreshRequest(openIdConfiguration: try await openIdConfiguration(),
                                                clientConfiguration: configuration,
                                                refreshToken: refreshToken,
+                                               resource: resource,
+                                               clientSecret: clientSecret,
                                                scope: scope?.joined(separator: " "),
                                                id: token.id)
             async let response = try request.send(to: self)
@@ -351,10 +353,10 @@ extension OAuth2Client {
     /// - Parameters:
     ///   - token: Token to refresh.
     ///   - completion: Completion bock invoked with the result.
-    public func refresh(_ token: Token, completion: @Sendable @escaping (Result<Token, OAuth2Error>) -> Void) {
+    public func refresh(_ token: Token, clientSecret: String, resource: String, completion: @Sendable @escaping (Result<Token, OAuth2Error>) -> Void) {
         Task {
             do {
-                completion(.success(try await refresh(token)))
+                completion(.success(try await refresh(token, clientSecret: clientSecret, resource: resource)))
             } catch {
                 completion(.failure(OAuth2Error(error)))
             }

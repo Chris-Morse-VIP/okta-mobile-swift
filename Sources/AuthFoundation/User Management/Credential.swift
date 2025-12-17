@@ -245,8 +245,8 @@ public final class Credential: Equatable, OAuth2ClientDelegate {
     }
     
     /// Attempt to refresh the token.
-    public func refresh() async throws {
-        self.token = try await oauth2.refresh(token)
+    public func refresh(clientSecret: String, resource: String) async throws {
+        self.token = try await oauth2.refresh(token, clientSecret: clientSecret, resource: resource)
     }
     
     /// Attempt to refresh the token if it either has expired, or is about to expire.
@@ -256,7 +256,7 @@ public final class Credential: Equatable, OAuth2ClientDelegate {
         if let expiresAt = token.expiresAt,
             expiresAt.timeIntervalSinceNow <= graceInterval
         {
-            try await refresh()
+            try await refresh(clientSecret: "", resource: "")
         }
     }
     

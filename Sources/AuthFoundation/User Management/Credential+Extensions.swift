@@ -39,13 +39,27 @@ extension Notification.Name {
 }
 
 extension Credential {
+
+    /// Attempt to refresh the token.
+    /// - Parameters:
+    ///   - completion: Completion block invoked when a result is returned.
+    public func refresh(clientSecret: String, resource: String, completion: @Sendable @escaping (Result<Void, OAuth2Error>) -> Void) {
+        Task {
+            do {
+                completion(.success(try await refresh(clientSecret: clientSecret, resource: resource)))
+            } catch {
+                completion(.failure(OAuth2Error(error)))
+            }
+        }
+    }
+
     /// Attempt to refresh the token.
     /// - Parameters:
     ///   - completion: Completion block invoked when a result is returned.
     public func refresh(completion: @Sendable @escaping (Result<Void, OAuth2Error>) -> Void) {
         Task {
             do {
-                completion(.success(try await refresh()))
+                completion(.success(try await refresh(clientSecret: "", resource: "")))
             } catch {
                 completion(.failure(OAuth2Error(error)))
             }
