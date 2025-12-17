@@ -44,6 +44,9 @@ public struct JWT: RawRepresentable, Sendable, Codable, HasClaims, Expires {
     
     /// The array of scopes this token is valid for.
     public var scope: [String]? { self[.scope] ?? self["scp"] }
+
+    /// VIP roles for application access
+    public var roles: [String]? { self[.roles] }
     
     /// The authentication context class reference.
     ///

@@ -32,9 +32,7 @@ extension Token {
             self.hint = hint
             self.configuration = configuration
 
-            guard let url = openIdConfiguration.revocationEndpoint else {
-                throw OAuth2Error.missingOpenIdConfiguration(attribute: "revocation_endpoint")
-            }
+            var url: URL { openIdConfiguration.revocationEndpoint ?? URL(string: "ADFS Does not use this feature. If you hit this url you will crash.")! }
             self.url = url
         }
     }
