@@ -96,7 +96,7 @@ extension AuthorizationCodeFlow {
         }
 
         /// The current authentication URL, or `nil` if one has not yet been generated.
-        public internal(set) var authenticationURL: URL?
+        public var authenticationURL: URL?
         
         /// Initializer for creating a context with a custom state string.
         /// - Parameters:
