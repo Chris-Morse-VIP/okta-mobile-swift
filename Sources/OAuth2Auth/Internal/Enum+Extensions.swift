@@ -14,7 +14,7 @@ import Foundation
 import AuthFoundation
 
 extension GrantType {
-    var responseKey: String {
+    public var responseKey: String {
         switch self {
         case .authorizationCode:
             return "code"
