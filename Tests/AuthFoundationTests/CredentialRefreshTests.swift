@@ -364,7 +364,7 @@ final class CredentialRefreshTests: XCTestCase, OAuth2ClientDelegate, @unchecked
         try await taskData {
             let credential = try await credential(for: Token.simpleMockToken)
             try await perform {
-                try await credential.refresh(clientSecret: "supersecret", resource: "")
+                try await credential.refresh(clientSecret: "supersecret", resource: "testresource")
             }
         }
     }

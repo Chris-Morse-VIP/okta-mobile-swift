@@ -536,7 +536,7 @@ final class OAuth2ClientTests: XCTestCase {
 
         for _ in 1...4 {
             let expect = expectation(description: "refresh")
-            client.refresh(token, clientSecret: "supersecret", resource: "") { result in
+            client.refresh(token, clientSecret: "supersecret", resource: "testresource") { result in
                 switch result {
                 case .success(let newToken):
                     lock.withLock {
@@ -563,7 +563,7 @@ final class OAuth2ClientTests: XCTestCase {
         let request = Token.RefreshRequest(openIdConfiguration: openIdConfiguration,
                                            clientConfiguration: clientConfiguration,
                                            refreshToken: "the-token",
-                                           resource: "",
+                                           resource: "testresource",
                                            clientSecret: "supersecret",
                                            scope: nil,
                                            id: "token-id")
@@ -580,7 +580,7 @@ final class OAuth2ClientTests: XCTestCase {
         urlSession.expect("https://example.com/oauth2/v1/token",
                           data: try data(from: .module, for: "token", in: "MockResponses"))
         
-        let token = try await client.refresh(token, clientSecret: "supersecret", resource: "")
+        let token = try await client.refresh(token, clientSecret: "supersecret", resource: "testresource")
         XCTAssertNotNil(token)
     }
 
