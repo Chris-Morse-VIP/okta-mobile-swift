@@ -355,11 +355,11 @@ extension OAuth2Client {
     ///   - completion: Completion bock invoked with the result.
     public func refresh(_ token: Token, clientSecret: String, resource: String, completion: @Sendable @escaping (Result<Token, OAuth2Error>) -> Void) {
         // guard that we have client secret and resource so we don't attempt to refresh with bad info.
-        guard !clientSecret.isEmpty, 
-              !resource.isEmpty 
-        else { 
+        guard !clientSecret.isEmpty,
+              !resource.isEmpty
+        else {
             completion(.failure(.missingClientConfiguration))
-            return 
+            return
         }
         Task {
             do {
