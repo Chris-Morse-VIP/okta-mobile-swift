@@ -536,7 +536,7 @@ final class OAuth2ClientTests: XCTestCase {
 
         for _ in 1...4 {
             let expect = expectation(description: "refresh")
-            client.refresh(token) { result in
+            client.refresh(token, clientSecret: "supersecret", resource: "") { result in
                 switch result {
                 case .success(let newToken):
                     lock.withLock {

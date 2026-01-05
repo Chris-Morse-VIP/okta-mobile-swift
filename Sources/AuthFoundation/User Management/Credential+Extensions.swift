@@ -42,6 +42,8 @@ extension Credential {
 
     /// Attempt to refresh the token.
     /// - Parameters:
+    ///   - clientSecret: The client secret to use when refreshing the token.
+    ///   - resource: The resource to use when refreshing the token.
     ///   - completion: Completion block invoked when a result is returned.
     public func refresh(clientSecret: String, resource: String, completion: @Sendable @escaping (Result<Void, OAuth2Error>) -> Void) {
         Task {
