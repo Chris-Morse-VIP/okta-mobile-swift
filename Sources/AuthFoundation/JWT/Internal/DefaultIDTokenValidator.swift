@@ -18,7 +18,7 @@ import CommonCrypto
 
 struct DefaultIDTokenValidator: IDTokenValidator {
     var issuedAtGraceInterval: TimeInterval = 300
-    var checks: [ValidationCheck] = ValidationCheck.allCases
+    var checks: [ValidationCheck] = ValidationCheck.vipIssuedChecks
     
     enum ValidationCheck: CaseIterable {
         case issuer, audience, scheme, algorithm, expirationTime, issuedAtTime, nonce, maxAge, subject
