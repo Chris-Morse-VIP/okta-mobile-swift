@@ -49,7 +49,7 @@ public struct JWT: RawRepresentable, Sendable, Codable, HasClaims, Expires {
     public var roles: [String]? { self[.roles] }
 
     /// VIP user ID for logged in user
-    public var userId: String? { self[.userId] }
+    public var userId: String? { self[.custom("user_id")] }
     
     /// The authentication context class reference.
     ///
