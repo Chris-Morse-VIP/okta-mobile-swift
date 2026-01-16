@@ -12,7 +12,6 @@ only_rules:
   - operator_usage_whitespace
   - return_arrow_whitespace
   - trailing_whitespace
-  - attributes
  
   # Empty
   - empty_collection_literal
@@ -34,6 +33,7 @@ only_rules:
   - collection_alignment
   - control_statement
   - file_header
+  - attributes
  
   # Order
   #- file_types_order - disabled due to the impracticality of private/fileprivate usages
@@ -41,7 +41,6 @@ only_rules:
   - protocol_property_accessors_order
  
   # Lint
-  - anyobject_protocol
   - class_delegate_protocol
   - cyclomatic_complexity
 
@@ -84,6 +83,10 @@ closure_parameter_position:
 
 attributes:
   severity: error
+  always_on_line_above:
+    - '@ClaimCollection'
+    - '@CredentialActor'
+
 collection_alignment:
   severity: error
 control_statement:
@@ -103,8 +106,6 @@ file_header:
                   \/\/ See the License for the specific language governing permissions and limitations under the License\.
                   \/\/
 
-anyobject_protocol:
-  severity: error
 class_delegate_protocol:
   severity: error
 cyclomatic_complexity:

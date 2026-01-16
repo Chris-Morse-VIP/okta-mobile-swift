@@ -56,24 +56,40 @@ extension WebLogin where Self: Screen {
     
     func send(username: String? = nil) {
         guard let username else { return }
-        
-        if app.webViews.textFields.firstMatch.waitForExistence(timeout: .veryLong) {
-            let field = app.webViews.textFields.element(boundBy: 0)
-            field.tap()
 
-            if let fieldValue = field.value as? String,
-               !fieldValue.isEmpty
-            {
-                usleep(useconds_t(1000)) // Wait for the field to be selected
-                field.tap(withNumberOfTaps: 3, numberOfTouches: 1)
+        let pageTransitionElement = app
+            .webViews
+            .staticTexts
+            .matching(NSPredicate(format: "label IN %@", ["Keep me signed in", "Username", "Sign In"]))
+            .waitForExistence(timeout: .veryLong)
+
+        if app.webViews.textFields.firstMatch.waitForExistence(timeout: .standard) {
+            let field = app.webViews.textFields.element(boundBy: 0)
+            let fieldValue = field.value as? String ?? ""
+            if fieldValue != username {
+                field.tap()
+                _ = app.keyboards.firstMatch.waitForExistence(timeout: .standard)
+                
+                if !fieldValue.isEmpty {
+                    Thread.sleep(forTimeInterval: 0.1) // Wait for the field to be selected
+                    field.tap(withNumberOfTaps: 3, numberOfTouches: 1)
+                    field.typeText("")
+                    Thread.sleep(forTimeInterval: 0.05)
+                }
+                
+                field.typeText(username)
             }
-            
-            field.typeText(username)
 
             tapKeyboardNextOrGo()
+
+            if let pageTransitionElement,
+               !pageTransitionElement.waitForNonExistence(timeout: .standard)
+            {
+                print("Error: Failed to transition to next page after entering username")
+            }
         }
     }
-    
+
     func select(authenticator: String) {
         let frame = app.webViews.staticTexts[authenticator].frame
         for link in app.webViews.links {
@@ -102,17 +118,45 @@ extension WebLogin where Self: Screen {
     
     func send(password: String? = nil) {
         guard let password else { return }
-        
-        if app.webViews.staticTexts["Select Password."].waitToBeHittable(timeout: .standard) {
+
+        if app.webViews
+            .staticTexts
+            .matching(NSPredicate(format: "label IN %@", ["Verify it's you with a security method",
+                                                          "Select from the following options",
+                                                          "Select Password."]))
+            .waitForExistence(timeout: .short) != nil
+        {
             select(authenticator: "Password")
         }
         
+        let pageTransitionElement = app
+            .webViews
+            .staticTexts
+            .matching(NSPredicate(format: "label IN %@", ["Verify with your password", "Forgot password?"]))
+            .waitForExistence(timeout: .long)
+
         if app.webViews.secureTextFields.firstMatch.waitForExistence(timeout: 5) {
             let field = app.webViews.secureTextFields.element(boundBy: 0)
             field.tap()
-            field.typeText(password)
+            _ = app.keyboards.firstMatch.waitForExistence(timeout: .standard)
             
+            // Dismiss the password save reminder keyboard view in iOS 18+
+            if app.otherElements["SFAutoFillInputView"].buttons["Not Now"].exists {
+                app.otherElements["SFAutoFillInputView"].buttons["Not Now"].tap()
+                Thread.sleep(forTimeInterval: 0.1) // Wait for the keyboard animation, since XCTest won't
+                field.tap()
+                _ = app.keyboards.firstMatch.waitForExistence(timeout: .standard)
+            }
+
+            field.typeText(password)
+
             tapKeyboardNextOrGo()
+
+            if let pageTransitionElement,
+               !pageTransitionElement.waitForNonExistence(timeout: .standard)
+            {
+                print("Error: Failed to transition to next page after entering password")
+            }
         }
     }
     

@@ -14,9 +14,9 @@ import Foundation
 import AuthFoundation
 
 /// Defines the additional token parameters that can be introduced through input arguments.
-protocol HasTokenParameters {
+protocol HasTokenParameters: Sendable {
     /// Parameters to include in the API request.
-    func tokenParameters(currentStatus: DirectAuthenticationFlow.Status?) -> [String: String]
+    func tokenParameters(currentStatus: DirectAuthenticationFlow.Status?) -> [String: any APIRequestArgument]
 }
 
 /// Defines the common properties and functions shared between factor types.
@@ -29,12 +29,9 @@ protocol AuthenticationFactor: HasTokenParameters {
     ///   - flow: The current flow for this authentication step.
     ///   - openIdConfiguration: OpenID configuration for this org.
     ///   - loginHint: The login hint for this session.
-    ///   - currentStatus: The current status this step is being created from, if applicable.
     ///   - factor: The factor for the step to process.
     /// - Returns: A step handler capable of processing this authentication factor.
     func stepHandler(flow: DirectAuthenticationFlow,
                      openIdConfiguration: OpenIdConfiguration,
-                     loginHint: String?,
-                     currentStatus: DirectAuthenticationFlow.Status?,
-                     factor: Self) throws -> any StepHandler
+                     loginHint: String?) async throws -> any StepHandler
 }

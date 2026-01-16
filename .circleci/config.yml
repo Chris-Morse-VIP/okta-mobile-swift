@@ -1,27 +1,28 @@
 version: 2.1
 
 orbs:
-  general-platform-helpers: okta/general-platform-helpers@1.8
+  platform-helpers: okta/platform-helpers@1
+  general-platform-helpers: okta/general-platform-helpers@1.9
   macos: circleci/macos@2
 
 executors:
   apple-ci-arm-medium:
     macos:
-      xcode: 14.3.1
-    resource_class: macos.m1.medium.gen1
+      xcode: "16.2.0"
+    resource_class: m4pro.medium
 
 commands:
   prepare-ios-simulator:
     steps:
       - macos/preboot-simulator:
-          version: "16.4"
+          version: "18.2"
           platform: "iOS"
-          device: "iPhone 14 Pro Max"
+          device: "iPhone 16 Pro Max"
 
   prepare-tvos-simulator:
     steps:
       - macos/preboot-simulator:
-          version: "16.4"
+          version: "18.2"
           platform: "tvOS"
           device: "Apple TV"
 
@@ -35,40 +36,50 @@ commands:
       platform:
         type: string
         default: "iOS Simulator"
+      xcode-options:
+        type: string
+        default: ""
     steps:
+      - run: xcodebuild -version
       - run:
           name: "Install test utilities"
           command: |
             if ! which -s xcresulttool; then
               export HOMEBREW_NO_AUTO_UPDATE=1
               brew tap a7ex/homebrew-formulae
-              brew install xcresultparser
+              brew install xcresultparser xcbeautify
             fi
+            mkdir -p /tmp/TestResults
       - run:
           name: "Define destination"
           command: |
             if [[ "<<parameters.platform>>" == "macOS" ]]; then
-                export DESTINATION="platform=<<parameters.platform>>,name=Any Mac"
+                export DESTINATION="platform=<<parameters.platform>>,arch=arm64"
             elif [[ -n $MACOS_ORB_DEVICE_UDID ]]; then
                 export DESTINATION="platform=<<parameters.platform>>,id=$MACOS_ORB_DEVICE_UDID"
             else
                 export DESTINATION="platform=<<parameters.platform>>"
             fi
             echo "export DESTINATION=\"$DESTINATION\"" >> "$BASH_ENV"
-            source "$BASH_ENV"
+            echo "Running on $DESTINATION"
       - run:
           name: "Build <<parameters.scheme>>"
           environment:
             NSUnbufferedIO: YES
           command: |
-            set -o pipefail && xcodebuild \
+            echo "Building for $DESTINATION"
+            set -o pipefail && \
+              xcrun xcodebuild \
                 -derivedDataPath /tmp/Build/DerivedData \
                 -clonedSourcePackagesDirPath /tmp/Build/ClonedSources \
-                -workspace OktaMobileSDK.xcworkspace \
+                -workspace OktaClient.xcworkspace \
                 -scheme "<<parameters.scheme>>" \
                 -sdk <<parameters.sdk>> \
                 -destination "$DESTINATION" \
-                build-for-testing 2>&1
+                <<parameters.xcode-options>> \
+                build-for-testing 2>&1 | \
+              tee -a "/tmp/TestResults/<<parameters.scheme>>-<<parameters.platform>>.log" | \
+              xcbeautify
       - when:
           condition:
             and:
@@ -81,21 +92,28 @@ commands:
           environment:
             NSUnbufferedIO: YES
           command: |
-            set -o pipefail && xcodebuild \
+            echo "Testing $DESTINATION"
+            set -o pipefail && \
+              xcrun xcodebuild \
                 -derivedDataPath /tmp/Build/DerivedData \
                 -clonedSourcePackagesDirPath /tmp/Build/ClonedSources \
                 -resultBundlePath "/tmp/TestResults/<<parameters.scheme>> #$CIRCLE_BUILD_NUM.xcresult" \
-                -workspace OktaMobileSDK.xcworkspace \
+                -workspace OktaClient.xcworkspace \
                 -scheme "<<parameters.scheme>>" \
                 -sdk <<parameters.sdk>> \
                 -destination "$DESTINATION" \
-                test-without-building 2>&1
+                <<parameters.xcode-options>> \
+                test-without-building 2>&1 | \
+              tee -a "/tmp/TestResults/<<parameters.scheme>>-<<parameters.platform>>.log" | \
+              xcbeautify
       - run:
           name: "Export test results"
           when: always
           command: |
             mkdir -p /tmp/junit-results
-            xcresultparser -o junit "/tmp/TestResults/<<parameters.scheme>> #$CIRCLE_BUILD_NUM.xcresult" > "/tmp/junit-results/<<parameters.scheme>>.xml"
+            if [[ -d "/tmp/TestResults/<<parameters.scheme>> #$CIRCLE_BUILD_NUM.xcresult" ]]; then
+              xcresultparser -o junit "/tmp/TestResults/<<parameters.scheme>> #$CIRCLE_BUILD_NUM.xcresult" > "/tmp/junit-results/<<parameters.scheme>>.xml"
+            fi
       - run:
           name: "Compress test results"
           when: always
@@ -180,6 +198,7 @@ jobs:
           scheme: "UserPasswordSignIn (macOS)"
           sdk: macosx
           platform: "macOS"
+          xcode-options: 'CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO'
       - store_artifacts:
           path: "/tmp/TestResults"
 
@@ -203,7 +222,6 @@ jobs:
       - run:
           name: run swift package show dependencies
           command: swift package show-dependencies
-      - general-platform-helpers/step-load-dependencies
       - general-platform-helpers/step-run-snyk-monitor:
           scan-all-projects: true
           skip-unresolved: false
@@ -232,15 +250,6 @@ workflows:
           requires:
             - setup
 
-  semgrep:
-    jobs:
-      - general-platform-helpers/job-semgrep-prepare:
-          name: semgrep-prepare
-      - general-platform-helpers/job-semgrep-scan:
-          name: semgrep-scan
-          requires:
-            - semgrep-prepare
-
   security-scan:
     jobs:
       - setup:
@@ -248,11 +257,9 @@ workflows:
             branches:
               only:
                 - master
-      - general-platform-helpers/job-snyk-prepare:
-          name: prepare-snyk
-          requires:
-            - setup
       - snyk-scan:
           name: execute-snyk
+          context:
+            - static-analysis
           requires:
-            - prepare-snyk
+            - setup

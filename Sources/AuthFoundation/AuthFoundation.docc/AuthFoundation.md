@@ -9,7 +9,7 @@ AuthFoundation provides the fundamentals for interacting with Okta, and exposing
 You can use AuthFoundation when you want to:
 
 * Manage, store, and use tokens and user information.
-* Interact with supplementary native SDKs, such as WebAuthenticationUI or OktaOAuth2.
+* Interact with supplementary native SDKs, such as BrowserSignin or OAuth2Auth.
 * Introspect or monitor network activity, customize behavior, or other operations related to user interaction.
 
 ## Topics
@@ -32,19 +32,26 @@ You can use AuthFoundation when you want to:
 - ``OpenIdConfiguration``
 - ``AuthenticationMethod``
 - ``AuthenticationFlow``
+- ``AuthenticationContext``
 - ``AuthenticationDelegate``
+- ``StandardAuthenticationContext``
 - ``OAuth2TokenRequest``
 - ``GrantType``
 - ``PKCE``
 
 ### JWT and Token Verification
 
+- <doc:WorkingWithClaims>
 - ``JWT``
 - ``JWK``
 - ``JWKS``
 - ``JWTClaim``
 - ``HasClaims``
+- ``ClaimCollection``
 - ``JSONClaimContainer``
+- ``JSON``
+- ``AnyJSON``
+- ``JSONRepresentable``
 - ``ClaimConvertable``
 - ``IsClaim``
 - ``Expires``
@@ -71,48 +78,48 @@ You can use AuthFoundation when you want to:
 
 ### Networking
 
-- ``APIClient``
-- ``APIClientDelegate``
-- ``APIClientConfiguration``
-- ``APIContentType``
-- ``APIRequest``
-- ``APIRequestBody``
-- ``APIRequestArgument``
-- ``APIRequestMethod``
-- ``APIResponse``
-- ``APIResponseResult``
-- ``APIRateLimit``
-- ``APIRetry``
 - ``APIAuthorization``
+- ``APIClientConfiguration``
+- ``APIClientDelegate``
+- ``APIClient``
+- ``APIContentType``
 - ``APIParsingContext``
-- ``OAuth2APIRequest``
-- ``JSONDecodable``
+- ``APIRateLimit``
+- ``APIRequestArgument``
+- ``APIRequestBody``
+- ``APIRequestMethod``
+- ``APIRequest``
+- ``APIResponseResult``
+- ``APIResponse``
+- ``APIRetry``
 - ``Empty``
+- ``JSONDecodable``
+- ``OAuth2APIRequest``
+- ``OAuth2APIRequestCategory``
+- ``AuthenticationFlowRequest``
+- ``ProvidesOAuth2Parameters``
 
 ### Error Types
 
 - ``APIClientError``
+- ``ClaimError``
+- ``CredentialError``
+- ``JSONError``
+- ``JWTError``
+- ``KeychainError``
 - ``OAuth2Error``
 - ``OAuth2ServerError``
 - ``OktaAPIError``
-- ``CredentialError``
 - ``TokenError``
-- ``JWTError``
-- ``KeychainError``
-- ``AuthenticationError``
-- ``JSONValueError``
 
 ### Migration and versioning
 
+- ``Migration``
 - ``SDKVersion``
 - ``SDKVersionMigrator``
-- ``Version``
 
-### Internals and mocking
+### Internals and Debugging
 
 - ``DelegateCollection``
+- ``DebugAPIRequestObserver``
 - ``UsesDelegateCollection``
-- ``URLSessionProtocol``
-- ``URLSessionDataTaskProtocol``
-- ``Weak``
-- ``WeakCollection``

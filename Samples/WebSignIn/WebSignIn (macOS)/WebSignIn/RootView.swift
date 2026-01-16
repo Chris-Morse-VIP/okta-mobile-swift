@@ -11,7 +11,7 @@
 //
 
 import SwiftUI
-import WebAuthenticationUI
+import BrowserSignin
 
 struct RootView: View {
     @State var signedIn = false

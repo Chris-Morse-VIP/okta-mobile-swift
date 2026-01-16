@@ -14,43 +14,51 @@ import XCTest
 @testable import TestCommon
 @testable import AuthFoundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 final class CredentialTests: XCTestCase {
     var coordinator: MockCredentialCoordinator!
     var credential: Credential!
     var urlSession: URLSessionMock!
 
-    let token = Token(id: "TokenId",
-                      issuedAt: Date(),
-                      tokenType: "Bearer",
-                      expiresIn: 300,
-                      accessToken: "abcd123",
-                      scope: "openid",
-                      refreshToken: "refresh123",
-                      idToken: nil,
-                      deviceSecret: "device123",
-                      context: Token.Context(configuration: .init(baseURL: URL(string: "https://example.com/oauth2/default")!,
-                                                                  clientId: "clientid",
-                                                                  scopes: "openid"),
-                                             clientSettings: [ "client_id": "foo" ]))
+    let token = try! Token(id: "TokenId",
+                           issuedAt: Date(),
+                           tokenType: "Bearer",
+                           expiresIn: 300,
+                           accessToken: "abcd123",
+                           scope: "openid",
+                           refreshToken: "refresh123",
+                           idToken: nil,
+                           deviceSecret: "device123",
+                           context: Token.Context(configuration: .init(issuerURL: URL(string: "https://example.com/oauth2/default")!,
+                                                                       clientId: "clientid",
+                                                                       scope: "openid"),
+                                                  clientSettings: ["client_id": "clientid"]))
 
-    override func setUpWithError() throws {
-        coordinator = MockCredentialCoordinator()
-        credential = coordinator.credentialDataSource.credential(for: token, coordinator: coordinator)
+    override func setUp() async throws {
+        coordinator = await MockCredentialCoordinator()
+        credential = await coordinator.credentialDataSource.credential(for: token, coordinator: coordinator)
+
         urlSession = credential.oauth2.session as? URLSessionMock
     }
-    
-    override func tearDownWithError() throws {
+
+    override func tearDown() async throws {
         coordinator = nil
         credential = nil
         urlSession = nil
     }
 
-    func testRemove() throws {
+
+    func testRemove() async throws {
         XCTAssertNoThrow(try credential.remove())
-        XCTAssertFalse(coordinator.credentialDataSource.hasCredential(for: token))
+
+        let hasCredential = await coordinator.credentialDataSource.hasCredential(for: token)
+        XCTAssertFalse(hasCredential)
     }
     
-    func testRevoke() throws {
+    func testRevoke() async throws {
         urlSession.expect("https://example.com/oauth2/default/.well-known/openid-configuration",
                           data: try data(from: .module, for: "openid-configuration", in: "MockResponses"),
                           contentType: "application/json")
@@ -60,9 +68,13 @@ final class CredentialTests: XCTestCase {
                           data: Data())
         urlSession.expect("https://example.com/oauth2/v1/revoke",
                           data: Data())
-        
-        XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 1)
-        XCTAssertTrue(coordinator.credentialDataSource.hasCredential(for: token))
+
+        let coordinator = coordinator!
+        let token = token
+        await CredentialActor.run {
+            XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 1)
+            XCTAssertTrue(coordinator.credentialDataSource.hasCredential(for: token))
+        }
 
         let expect = expectation(description: "network request")
         credential.revoke(type: .all) { result in
@@ -73,28 +85,37 @@ final class CredentialTests: XCTestCase {
             }
             expect.fulfill()
         }
-        waitForExpectations(timeout: 1.0) { error in
-            XCTAssertNil(error)
-        }
-        
-        let revokeRequest = try XCTUnwrap(urlSession.requests.first(where: { request in
-            request.url?.absoluteString == "https://example.com/oauth2/v1/revoke"
-        }))
-        XCTAssertEqual(revokeRequest.bodyString, "client_id=foo&token=abcd123&token_type_hint=access_token")
+        await fulfillment(of: [expect], timeout: .standard)
 
-        XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 0)
-        XCTAssertFalse(coordinator.credentialDataSource.hasCredential(for: token))
+        let accessTokenRevokeRequest = urlSession.request(matching: .body("token_type_hint=access_token"))
+        let refreshTokenRevokeRequest = urlSession.request(matching: .body("token_type_hint=refresh_token"))
+        let deviceSecretRevokeRequest = urlSession.request(matching: .body("token_type_hint=device_secret"))
+        XCTAssertEqual(try XCTUnwrap(accessTokenRevokeRequest?.bodyString),
+                       "client_id=clientid&token=abcd123&token_type_hint=access_token")
+        XCTAssertEqual(try XCTUnwrap(refreshTokenRevokeRequest?.bodyString),
+                       "client_id=clientid&token=refresh123&token_type_hint=refresh_token")
+        XCTAssertEqual(try XCTUnwrap(deviceSecretRevokeRequest?.bodyString),
+                       "client_id=clientid&token=device123&token_type_hint=device_secret")
+
+        await CredentialActor.run {
+            XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 0)
+            XCTAssertFalse(coordinator.credentialDataSource.hasCredential(for: token))
+        }
     }
 
-    func testRevokeAccessToken() throws {
+    func testRevokeAccessToken() async throws {
         urlSession.expect("https://example.com/oauth2/default/.well-known/openid-configuration",
                           data: try data(from: .module, for: "openid-configuration", in: "MockResponses"),
                           contentType: "application/json")
         urlSession.expect("https://example.com/oauth2/v1/revoke",
                           data: Data())
-        
-        XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 1)
-        XCTAssertTrue(coordinator.credentialDataSource.hasCredential(for: token))
+
+        let coordinator = coordinator!
+        let token = token
+        await CredentialActor.run {
+            XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 1)
+            XCTAssertTrue(coordinator.credentialDataSource.hasCredential(for: token))
+        }
 
         let expect = expectation(description: "network request")
         credential.revoke(type: .accessToken) { result in
@@ -105,35 +126,34 @@ final class CredentialTests: XCTestCase {
             }
             expect.fulfill()
         }
-        waitForExpectations(timeout: 1.0) { error in
-            XCTAssertNil(error)
-        }
+        await fulfillment(of: [expect], timeout: .standard)
 
-        XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 1)
-        XCTAssertTrue(coordinator.credentialDataSource.hasCredential(for: token))
+        await CredentialActor.run {
+            XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 1)
+            XCTAssertTrue(coordinator.credentialDataSource.hasCredential(for: token))
+        }
     }
 
-    func testRevokeFailure() throws {
+    func testRevokeFailure() async throws {
         urlSession.expect("https://example.com/oauth2/default/.well-known/openid-configuration",
                           data: try data(from: .module, for: "openid-configuration", in: "MockResponses"),
                           contentType: "application/json")
         urlSession.expect("https://example.com/oauth2/v1/revoke",
                           data: data(for: """
-                                        {"error": "invalid_token", "errorDescription": "Invalid token"}
+                                        {"error": "invalid_token", "error_description": "Invalid token"}
                                     """),
                           statusCode: 400,
                           contentType: "application/json")
         
         let expect = expectation(description: "network request")
         credential.revoke(type: .accessToken) { result in
+            defer { expect.fulfill() }
             switch result {
             case .success():
                 XCTFail()
                 
             case .failure(let error):
-                guard case let .network(error: apiError) = error,
-                      case let .serverError(serverError) = apiError,
-                      let oauth2Error = serverError as? OAuth2ServerError
+                guard case let .server(error: oauth2Error) = error
                 else {
                     XCTFail()
                     return
@@ -141,14 +161,11 @@ final class CredentialTests: XCTestCase {
 
                 XCTAssertEqual(oauth2Error.code, .invalidToken)
             }
-            expect.fulfill()
         }
-        waitForExpectations(timeout: 1.0) { error in
-            XCTAssertNil(error)
-        }
+        await fulfillment(of: [expect], timeout: .standard)
     }
 
-    func testRevokeAll() throws {
+    func testRevokeAll() async throws {
         urlSession.expect("https://example.com/oauth2/default/.well-known/openid-configuration",
                           data: try data(from: .module, for: "openid-configuration", in: "MockResponses"),
                           contentType: "application/json")
@@ -168,41 +185,40 @@ final class CredentialTests: XCTestCase {
             }
             expect.fulfill()
         }
-        waitForExpectations(timeout: 1.0) { error in
-            XCTAssertNil(error)
-        }
-        
-        let accessTokenRequest = try XCTUnwrap(urlSession.requests.first(where: { request in
-            request.bodyString?.contains("abcd123") ?? false
-        }))
-        let refreshTokenRequest = try XCTUnwrap(urlSession.requests.first(where: { request in
-            request.bodyString?.contains("refresh123") ?? false
-        }))
-        let deviceSecretRequest = try XCTUnwrap(urlSession.requests.first(where: { request in
-            request.bodyString?.contains("device123") ?? false
-        }))
+        await fulfillment(of: [expect], timeout: .standard)
 
+        let accessTokenRequest = try XCTUnwrap(urlSession.request(matching: .body("token=abcd123")))
         XCTAssertEqual(accessTokenRequest.bodyString,
-                       "client_id=foo&token=abcd123&token_type_hint=access_token")
+                       "client_id=clientid&token=abcd123&token_type_hint=access_token")
+
+        let refreshTokenRequest = try XCTUnwrap(urlSession.request(matching: .body("token=refresh123")))
         XCTAssertEqual(refreshTokenRequest.bodyString,
-                       "client_id=foo&token=refresh123&token_type_hint=refresh_token")
+                       "client_id=clientid&token=refresh123&token_type_hint=refresh_token")
+
+        let deviceSecretRequest = try XCTUnwrap(urlSession.request(matching: .body("token=device123")))
         XCTAssertEqual(deviceSecretRequest.bodyString,
-                       "client_id=foo&token=device123&token_type_hint=device_secret")
+                       "client_id=clientid&token=device123&token_type_hint=device_secret")
     }
     
-    func testFailureAfterRevokeAccessToken() throws {
+    func testFailureAfterRevokeAccessToken() async throws {
         urlSession.expect("https://example.com/oauth2/default/.well-known/openid-configuration",
                           data: try data(from: .module, for: "openid-configuration", in: "MockResponses"),
                           contentType: "application/json")
         urlSession.expect("https://example.com/oauth2/v1/revoke",
                           data: Data())
-        
-        XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 1)
-        XCTAssertTrue(coordinator.credentialDataSource.hasCredential(for: token))
 
-        let storage = try XCTUnwrap(coordinator.tokenStorage as? MockTokenStorage)
-        storage.error = CredentialError.metadataConsistency
-        
+        let coordinator = coordinator!
+        let token = token
+        await CredentialActor.run {
+            XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 1)
+            XCTAssertTrue(coordinator.credentialDataSource.hasCredential(for: token))
+        }
+
+        try await CredentialActor.run {
+            let storage = try XCTUnwrap(coordinator.tokenStorage as? MockTokenStorage)
+            storage.error = CredentialError.metadataConsistency
+        }
+
         let expect = expectation(description: "network request")
         credential.revoke(type: .accessToken) { result in
             switch result {
@@ -212,33 +228,29 @@ final class CredentialTests: XCTestCase {
             }
             expect.fulfill()
         }
-        waitForExpectations(timeout: 1.0) { error in
-            XCTAssertNil(error)
-        }
+        await fulfillment(of: [expect], timeout: .standard)
 
-        XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 1)
-        XCTAssertTrue(coordinator.credentialDataSource.hasCredential(for: token))
+        await CredentialActor.run {
+            XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 1)
+            XCTAssertTrue(coordinator.credentialDataSource.hasCredential(for: token))
+        }
     }
 
-    #if swift(>=5.5.1)
-    @available(iOS 13.0, tvOS 13.0, macOS 10.15, watchOS 6, *)
     func testRevokeFailureAsync() async throws {
         urlSession.expect("https://example.com/oauth2/default/.well-known/openid-configuration",
                           data: try data(from: .module, for: "openid-configuration", in: "MockResponses"),
                           contentType: "application/json")
         urlSession.expect("https://example.com/oauth2/v1/revoke",
                           data: data(for: """
-                                        {"error": "invalid_token", "errorDescription": "Invalid token"}
+                                        {"error": "invalid_token", "error_description": "Invalid token"}
                                     """),
                           statusCode: 400,
                           contentType: "application/json")
         
         do {
             try await credential.revoke(type: .accessToken)
-        } catch {
-            guard let oauth2Error = error as? OAuth2Error,
-                  case let .network(error: apiError) = oauth2Error,
-                  case let .serverError(serverError) = apiError,
+        } catch let error as APIClientError {
+            guard case let .httpError(serverError) = error,
                   let oauth2Error = serverError as? OAuth2ServerError
             else {
                 XCTFail()
@@ -246,10 +258,11 @@ final class CredentialTests: XCTestCase {
             }
             
             XCTAssertEqual(oauth2Error.code, .invalidToken)
+        } catch {
+            XCTFail()
         }
     }
     
-    @available(iOS 13.0, tvOS 13.0, macOS 10.15, watchOS 6, *)
     func testFailureAfterRevokeAccessTokenAsync() async throws {
         urlSession.expect("https://example.com/oauth2/default/.well-known/openid-configuration",
                           data: try data(from: .module, for: "openid-configuration", in: "MockResponses"),
@@ -261,12 +274,16 @@ final class CredentialTests: XCTestCase {
         urlSession.expect("https://example.com/oauth2/v1/revoke",
                           data: Data())
 
-        XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 1)
-        XCTAssertTrue(coordinator.credentialDataSource.hasCredential(for: token))
+        let coordinator = coordinator!
+        let token = token
+        try await CredentialActor.run {
+            XCTAssertEqual(coordinator.credentialDataSource.credentialCount, 1)
+            XCTAssertTrue(coordinator.credentialDataSource.hasCredential(for: token))
 
-        let storage = try XCTUnwrap(coordinator.tokenStorage as? MockTokenStorage)
-        storage.error = OAuth2Error.invalidUrl
-        
+            let storage = try XCTUnwrap(coordinator.tokenStorage as? MockTokenStorage)
+            storage.error = OAuth2Error.invalidUrl
+        }
+
         do {
             try await credential.revoke()
         } catch let error as OAuth2Error {
@@ -275,5 +292,4 @@ final class CredentialTests: XCTestCase {
             XCTFail()
         }
     }
-    #endif
 }

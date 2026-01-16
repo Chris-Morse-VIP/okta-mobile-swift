@@ -13,7 +13,23 @@
 import Foundation
 
 extension String {
-    var base64URLDecoded: String {
+    @_documentation(visibility: internal)
+    public enum CaseStyle {
+        case snakeCase
+        case camelCase
+        case pascalCase
+    }
+
+    #if COCOAPODS
+    @_documentation(visibility: internal)
+    public var base64URLDecoded: String  { convertToBase64URLDecoded() }
+    #else
+    @_documentation(visibility: internal)
+    package var base64URLDecoded: String { convertToBase64URLDecoded() }
+    #endif
+
+    @inline(__always)
+    private func convertToBase64URLDecoded() -> String {
         var result = replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
 
@@ -23,4 +39,152 @@ extension String {
 
         return result
     }
+    
+    @_documentation(visibility: internal)
+    public static func nonce(length: UInt = 16) -> String {
+        [UInt8].random(count: Int(length)).base64URLEncodedString
+    }
+
+    @_documentation(visibility: internal)
+    @inlinable
+    public func convertedTo(style: CaseStyle, separator: Character = "_") -> String {
+        switch style {
+        case .snakeCase:
+            return convertToSnakeCase(value: self,
+                                      separator: separator)
+        case .camelCase:
+            return convertToCamelCase(value: self,
+                                      separator: separator)
+        case .pascalCase:
+            return convertToCamelCase(value: self,
+                                      capitalizeFirstComponent: true,
+                                      separator: separator)
+        }
+    }
+    
+    @_documentation(visibility: internal)
+    @inlinable public var snakeCase: String {
+        convertedTo(style: .snakeCase)
+    }
+
+    @_documentation(visibility: internal)
+    @inlinable public var camelCase: String {
+        convertedTo(style: .camelCase)
+    }
+
+    @_documentation(visibility: internal)
+    @inlinable public var pascalCase: String {
+        convertedTo(style: .pascalCase)
+    }
+}
+
+@usableFromInline
+enum SnakeWordBoundaryType {
+    case uppercase
+    case number
+    
+    @inlinable
+    init?(_ character: Character?) {
+        guard let character = character else {
+            return nil
+        }
+        
+        if character.isUppercase {
+            self = .uppercase
+        } else if character.isNumber {
+            self = .number
+        } else {
+            return nil
+        }
+    }
+}
+
+@usableFromInline
+func convertToCamelCase(value: String,
+                        capitalizeFirstComponent: Bool = false,
+                        separator: Character = "_") -> String
+{
+    var result = ""
+    
+    let words = value.split(separator: separator)
+    for index in 0..<words.count {
+        var word = String(words[index])
+        
+        // Upper-case the first character if needed
+        if index > 0 || capitalizeFirstComponent,
+           word.first?.isLowercase == true
+        {
+            let firstChar = word.removeFirst().uppercased()
+            word.insert(contentsOf: firstChar,
+                             at: word.startIndex)
+        }
+        
+        // Lower-case the first character if needed, ignoring acronyms
+        else if index == 0,
+                !capitalizeFirstComponent,
+                word.first?.isUppercase == true,
+                word.count == 1 || word[word.index(after: word.startIndex)].isLowercase
+        {
+            let firstChar = word.removeFirst().lowercased()
+            word.insert(contentsOf: firstChar,
+                             at: word.startIndex)
+        }
+
+        result.append(word)
+    }
+
+    return result
+}
+
+@usableFromInline
+func convertToSnakeCase(value: String, separator: Character = "_") -> String {
+    var result = ""
+
+    guard !value.isEmpty else {
+        return result
+    }
+
+    var previousCharacterType: SnakeWordBoundaryType?
+
+    for index in value.indices {
+        let character = value[index]
+        let characterType = SnakeWordBoundaryType(character)
+        let nextIndex = value.index(after: index)
+        let nextCharacter: Character? = {
+            guard nextIndex < value.endIndex else { return nil }
+            return value[nextIndex]
+        }()
+        let nextCharacterType = SnakeWordBoundaryType(nextCharacter)
+
+        var showSeparator = false
+        if let characterType = characterType {
+            // Word boundary between lowercase and a boundary word {
+            if previousCharacterType == nil {
+                showSeparator = true
+            }
+            
+            // Word boundary between different word types
+            else if previousCharacterType != characterType {
+                showSeparator = true
+            }
+
+            // Word boundary between an acronym and another word
+            else if characterType == .uppercase &&
+                        previousCharacterType == .uppercase &&
+                        nextCharacterType == nil &&
+                        nextIndex < value.endIndex
+            {
+                showSeparator = true
+            }
+        }
+
+        if showSeparator && !result.isEmpty {
+            result += "\(separator)"
+        }
+
+        result += character.lowercased()
+        previousCharacterType = characterType
+    }
+    
+    return result
 }

@@ -1,0 +1,11 @@
+version: 1
+builder:
+  configs:
+    - documentation_targets:
+        - AuthFoundation
+        - OAuth2Auth
+        - OktaDirectAuth
+        - OktaIdxAuth
+        - BrowserSignin
+      custom_documentation_parameters:
+        - "--enable-experimental-external-link-support"

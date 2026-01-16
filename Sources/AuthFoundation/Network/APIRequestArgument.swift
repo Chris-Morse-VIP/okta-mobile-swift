@@ -31,69 +31,121 @@ import Foundation
 /// - Float
 /// - NSString
 /// - NSNumber
-public protocol APIRequestArgument {
+public protocol APIRequestArgument: Sendable {
     /// The string representation of this request argument.
     var stringValue: String { get }
 }
 
+extension Dictionary<String, APIRequestArgument> {
+    @_documentation(visibility: private)
+    public var stringComponents: [String: String] {
+        mapValues { $0.stringValue }
+    }
+}
+
+extension APIRequestArgument where Self: RawRepresentable, Self.RawValue.Type == String.Type {
+    @_documentation(visibility: private)
+    public var stringValue: String {
+        rawValue
+    }
+}
+
 extension String: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { self }
 }
 
 extension Int: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension Double: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension Bool: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension UInt: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension Int8: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension UInt8: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension Int16: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension UInt16: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension Int32: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension UInt32: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension Int64: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension UInt64: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension Float: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
 extension NSString: APIRequestArgument {
+    @_documentation(visibility: private)
     public var stringValue: String { "\(self)" }
 }
 
+@_documentation(visibility: private)
 extension NSNumber: APIRequestArgument {}
+
+@_documentation(visibility: private)
+extension JWT: APIRequestArgument {}
+
+@_documentation(visibility: private)
+extension GrantType: APIRequestArgument {}
+
+@_documentation(visibility: private)
+extension Array: APIRequestArgument where Element: APIRequestArgument {
+    public var stringValue: String {
+        map(\.stringValue)
+            .joined(separator: " ")
+    }
+}
+
+@_documentation(visibility: private)
+extension Token.Kind: APIRequestArgument {}
+
+@_documentation(visibility: private)
+extension URL: APIRequestArgument {
+    public var stringValue: String { absoluteString }
+}

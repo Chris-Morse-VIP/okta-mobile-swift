@@ -17,6 +17,7 @@ import XCTest
 
 final class RequestTests: XCTestCase {
     var openIdConfiguration: OpenIdConfiguration!
+    let issuer = URL(string: "https://example.com")!
     
     override func setUpWithError() throws {
         openIdConfiguration = try mock(from: .module,
@@ -27,36 +28,68 @@ final class RequestTests: XCTestCase {
     func testTokenRequestParameters() throws {
         var request: TokenRequest
         
-        // No authentication
+        // No authentication, sign-in intent
         request = .init(openIdConfiguration: openIdConfiguration,
-                        clientConfiguration: try .init(domain: "example.com",
-                                                       clientId: "theClientId",
-                                                       scopes: "openid profile"),
-                        currentStatus: nil,
+                        clientConfiguration: .init(issuerURL: issuer,
+                                                   clientId: "theClientId",
+                                                   scope: "openid profile"),
+                        context: .init(),
                         factor: DirectAuthenticationFlow.PrimaryFactor.password("password123"))
-        XCTAssertEqual(request.bodyParameters as? [String: String],
+        XCTAssertEqual(request.bodyParameters?.stringComponents,
                        [
                         "client_id": "theClientId",
                         "scope": "openid profile",
                         "grant_type": "password",
-                        "password": "password123"
+                        "password": "password123",
                        ])
 
-        // Client Secret authentication
+        // No authentication, ACR Values
         request = .init(openIdConfiguration: openIdConfiguration,
-                        clientConfiguration: try .init(domain: "example.com",
-                                                       clientId: "theClientId",
-                                                       scopes: "openid profile",
-                                                       authentication: .clientSecret("supersecret")),
-                        currentStatus: nil,
+                        clientConfiguration: .init(issuerURL: issuer,
+                                                   clientId: "theClientId",
+                                                   scope: "openid profile"),
+                        context: .init(acrValues: ["urn:foo:bar", "urn:baz:boo"]),
                         factor: DirectAuthenticationFlow.PrimaryFactor.password("password123"))
-        XCTAssertEqual(request.bodyParameters as? [String: String],
+        XCTAssertEqual(request.bodyParameters?.stringComponents,
+                       [
+                        "client_id": "theClientId",
+                        "scope": "openid profile",
+                        "grant_type": "password",
+                        "password": "password123",
+                        "acr_values": "urn:foo:bar urn:baz:boo",
+                       ])
+
+        // Client Secret authentication, sign-in intent
+        request = .init(openIdConfiguration: openIdConfiguration,
+                        clientConfiguration: .init(issuerURL: issuer,
+                                                   clientId: "theClientId",
+                                                   scope: "openid profile",
+                                                   authentication: .clientSecret("supersecret")),
+                        context: .init(),
+                        factor: DirectAuthenticationFlow.PrimaryFactor.password("password123"))
+        XCTAssertEqual(request.bodyParameters?.stringComponents,
                        [
                         "client_id": "theClientId",
                         "client_secret": "supersecret",
                         "scope": "openid profile",
                         "grant_type": "password",
-                        "password": "password123"
+                        "password": "password123",
+                       ])
+        
+        // No authentication, recovery intent
+        request = .init(openIdConfiguration: openIdConfiguration,
+                        clientConfiguration: .init(issuerURL: issuer,
+                                                   clientId: "theClientId",
+                                                   scope: "openid profile"),
+                        context: .init(intent: .recovery),
+                        factor: DirectAuthenticationFlow.PrimaryFactor.otp(code: "123456"))
+        XCTAssertEqual(request.bodyParameters?.stringComponents,
+                       [
+                        "client_id": "theClientId",
+                        "scope": "okta.myAccount.password.manage",
+                        "grant_type": "urn:okta:params:oauth:grant-type:otp",
+                        "intent": "recovery",
+                        "otp": "123456",
                        ])
     }
 
@@ -65,31 +98,37 @@ final class RequestTests: XCTestCase {
         
         // No authentication
         request = try .init(openIdConfiguration: openIdConfiguration,
-                            clientConfiguration: try .init(domain: "example.com",
-                                                           clientId: "theClientId",
-                                                           scopes: "openid profile"),
+                            clientConfiguration: .init(issuerURL: issuer,
+                                                       clientId: "theClientId",
+                                                       scope: "openid profile"),
+                            context: .init(),
                             loginHint: "user@example.com",
-                            channelHint: .push)
-        XCTAssertEqual(request.bodyParameters as? [String: String],
+                            channelHint: .push,
+                            challengeHint: .oob)
+        XCTAssertEqual(request.bodyParameters?.stringComponents,
                        [
                         "client_id": "theClientId",
                         "channel_hint": "push",
+                        "challenge_hint": "urn:okta:params:oauth:grant-type:oob",
                         "login_hint": "user@example.com"
                        ])
 
         // Client Secret authentication
         request = try .init(openIdConfiguration: openIdConfiguration,
-                            clientConfiguration: try .init(domain: "example.com",
-                                                           clientId: "theClientId",
-                                                           scopes: "openid profile",
-                                                           authentication: .clientSecret("supersecret")),
+                            clientConfiguration: .init(issuerURL: issuer,
+                                                       clientId: "theClientId",
+                                                       scope: "openid profile",
+                                                       authentication: .clientSecret("supersecret")),
+                            context: .init(),
                             loginHint: "user@example.com",
-                            channelHint: .push)
-        XCTAssertEqual(request.bodyParameters as? [String: String],
+                            channelHint: .push,
+                            challengeHint: .oob)
+        XCTAssertEqual(request.bodyParameters?.stringComponents,
                        [
                         "client_id": "theClientId",
                         "client_secret": "supersecret",
                         "channel_hint": "push",
+                        "challenge_hint": "urn:okta:params:oauth:grant-type:oob",
                         "login_hint": "user@example.com"
                        ])
     }
@@ -99,27 +138,48 @@ final class RequestTests: XCTestCase {
         
         // No authentication
         request = try .init(openIdConfiguration: openIdConfiguration,
-                            clientConfiguration: try .init(domain: "example.com",
-                                                           clientId: "theClientId",
-                                                           scopes: "openid profile"),
+                            clientConfiguration: .init(issuerURL: issuer,
+                                                       clientId: "theClientId",
+                                                       scope: "openid profile"),
+                            context: .init(),
                             mfaToken: "abcd123",
+                            channel: nil,
                             challengeTypesSupported: [.password, .oob])
-        XCTAssertEqual(request.bodyParameters as? [String: String],
+        XCTAssertEqual(request.bodyParameters?.stringComponents,
                        [
                         "client_id": "theClientId",
                         "mfa_token": "abcd123",
                         "challenge_types_supported": "password urn:okta:params:oauth:grant-type:oob"
                        ])
 
+        // Channel Hint
+        request = try .init(openIdConfiguration: openIdConfiguration,
+                            clientConfiguration: .init(issuerURL: issuer,
+                                                       clientId: "theClientId",
+                                                       scope: "openid profile"),
+                            context: .init(),
+                            mfaToken: "abcd123",
+                            channel: .push,
+                            challengeTypesSupported: [.oobMFA])
+        XCTAssertEqual(request.bodyParameters?.stringComponents,
+                       [
+                        "client_id": "theClientId",
+                        "mfa_token": "abcd123",
+                        "channel_hint": "push",
+                        "challenge_types_supported": "http://auth0.com/oauth/grant-type/mfa-oob"
+                       ])
+
         // Client Secret authentication
         request = try .init(openIdConfiguration: openIdConfiguration,
-                            clientConfiguration: try .init(domain: "example.com",
-                                                           clientId: "theClientId",
-                                                           scopes: "openid profile",
-                                                           authentication: .clientSecret("supersecret")),
+                            clientConfiguration: .init(issuerURL: issuer,
+                                                       clientId: "theClientId",
+                                                       scope: "openid profile",
+                                                       authentication: .clientSecret("supersecret")),
+                            context: .init(),
                             mfaToken: "abcd123",
+                            channel: nil,
                             challengeTypesSupported: [.password, .oob])
-        XCTAssertEqual(request.bodyParameters as? [String: String],
+        XCTAssertEqual(request.bodyParameters?.stringComponents,
                        [
                         "client_id": "theClientId",
                         "client_secret": "supersecret",

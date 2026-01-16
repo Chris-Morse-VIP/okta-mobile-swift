@@ -16,7 +16,6 @@ import Foundation
 import CommonCrypto
 
 extension JWK.Algorithm {
-    @available(iOS 10.0, macCatalyst 13.0, tvOS 10.0, watchOS 3.0, macOS 10.12, *)
     var secKeyAlgorithm: SecKeyAlgorithm? {
         switch self {
         case .rs256:
@@ -29,20 +28,7 @@ extension JWK.Algorithm {
             return nil
         }
     }
-    
-    var secPadding: SecPadding? {
-        switch self {
-        case .rs256:
-            return .PKCS1SHA256
-        case .rs384:
-            return .PKCS1SHA384
-        case .rs512:
-            return .PKCS1SHA512
-        default:
-            return nil
-        }
-    }
-    
+
     func digest(data: Data) -> Data? {
         switch self {
         case .rs256:

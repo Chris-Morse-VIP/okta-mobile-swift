@@ -12,27 +12,33 @@
 
 import Foundation
 
+#if !COCOAPODS
+@_exported import JSON
+#endif
+
 /// Describes the configuration of an OpenID server.
 ///
-/// The values exposed from this configuration are typically used during authentication, or when querying a server for its capabilities. This type uses ``HasClaims`` to represent the various provider metadata (represented as ``OpenIdConfiguration/ProviderMetadata``) for returning the full contents of the server's configuration. For more information, please refer to the <doc:WorkingWithClaims> documentation.
-public struct OpenIdConfiguration: Codable, JSONClaimContainer {
+/// The values exposed from this configuration are typically used during authentication, or when querying a server for its capabilities. This type uses ``HasClaims`` to represent the various provider metadata (represented as ``OpenIdConfiguration/ProviderMetadata``) for returning the full contents of the server's configuration. For more information, please see the ``HasClaims`` documentation.
+public struct OpenIdConfiguration: Sendable, Codable, JSONClaimContainer {
     public typealias ClaimType = ProviderMetadata
     
     /// The raw payload of provider metadata claims returned from the OpenID Provider.
-    public let payload: [String: Any]
-    
-    public init(from decoder: Decoder) throws {
-        let required = try decoder.container(keyedBy: RequiredCodingKeys.self)
-        issuer = try required.decode(URL.self, forKey: .issuer)
-        authorizationEndpoint = try required.decode(URL.self, forKey: .authorizationEndpoint)
-        tokenEndpoint = try required.decode(URL.self, forKey: .tokenEndpoint)
-        jwksUri = try required.decode(URL.self, forKey: .jwksUri)
-        responseTypesSupported = try required.decode([String].self, forKey: .responseTypesSupported)
-        subjectTypesSupported = try required.decode([String].self, forKey: .subjectTypesSupported)
-        idTokenSigningAlgValuesSupported = try required.decode([JWK.Algorithm].self, forKey: .idTokenSigningAlgValuesSupported)
+    public var payload: [String: any Sendable] { json.payload }
 
-        let container = try decoder.container(keyedBy: JSONCodingKeys.self)
-        payload = try container.decode([String: Any].self)
+    public let json: JSON
+
+    @_documentation(visibility: internal)
+    public init(_ json: JSON) throws {
+        self.json = json
+
+        let payload = json.payload
+        issuer = try ProviderMetadata.value(.issuer, in: payload)
+        authorizationEndpoint = try ProviderMetadata.value(.authorizationEndpoint, in: payload)
+        tokenEndpoint = try ProviderMetadata.value(.tokenEndpoint, in: payload)
+        jwksUri = try ProviderMetadata.value(.jwksUri, in: payload)
+        responseTypesSupported = try ProviderMetadata.value(.responseTypesSupported, in: payload)
+        subjectTypesSupported = try ProviderMetadata.value(.subjectTypesSupported, in: payload)
+        idTokenSigningAlgValuesSupported = try ProviderMetadata.value(.idTokenSigningAlgValuesSupported, in: payload)
     }
     
     /// The issuer URL for this OpenID provider.
@@ -56,12 +62,6 @@ public struct OpenIdConfiguration: Codable, JSONClaimContainer {
     /// The list of supported ID token signing algorithms for this OpenID Provider.
     public let idTokenSigningAlgValuesSupported: [JWK.Algorithm]
 
-    public static let jsonDecoder: JSONDecoder = {
-        let result = JSONDecoder()
-        result.keyDecodingStrategy = .convertFromSnakeCase
-        return result
-    }()
-    
     enum RequiredCodingKeys: String, CodingKey, CaseIterable {
         case issuer
         case authorizationEndpoint
@@ -82,6 +82,6 @@ extension OpenIdConfiguration {
     public var userinfoEndpoint: URL? { self[.userinfoEndpoint] }
     public var scopesSupported: [String]? { self[.scopesSupported] }
     public var responseModesSupported: [String]? { self[.responseModesSupported] }
-    public var claimsSupported: [JWTClaim]? { arrayValue(JWTClaim.self, for: .claimsSupported) }
-    public var grantTypesSupported: [GrantType]? { arrayValue(GrantType.self, for: .grantTypesSupported) }
+    public var claimsSupported: [JWTClaim]? { self[.claimsSupported] }
+    public var grantTypesSupported: [GrantType]? { self[.grantTypesSupported] }
 }

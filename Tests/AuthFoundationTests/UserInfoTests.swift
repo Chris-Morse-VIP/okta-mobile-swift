@@ -30,7 +30,7 @@ final class UserInfoTests: XCTestCase {
         XCTAssertTrue(info.emailVerified!)
         XCTAssertEqual(info.address?["street_address"], "155 Country Lane")
         
-        #if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
+        #if os(iOS) || os(macOS) || os(tvOS) || os(watchOS) || (swift(>=5.10) && os(visionOS))
         if #available(iOS 15, macCatalyst 15, macOS 12.0, tvOS 15, watchOS 8, *) {
             let formatter = PersonNameComponentsFormatter()
             formatter.style = .long
@@ -65,11 +65,11 @@ final class UserInfoTests: XCTestCase {
             "name":"Arthur Dent"
         ]
         
-        let info1 = UserInfo(data)
+        let info1 = try UserInfo(data)
         XCTAssertEqual(info1.subject, "ABC123")
         XCTAssertEqual(info1.name, "Arthur Dent")
         
-        let info2 = try XCTUnwrap(UserInfo(data))
+        let info2 = try XCTUnwrap(try UserInfo(data))
         XCTAssertEqual(info2.subject, "ABC123")
         XCTAssertEqual(info2.name, "Arthur Dent")
         

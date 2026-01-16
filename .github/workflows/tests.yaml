@@ -1,131 +1,393 @@
 name: Tests
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
-    paths:
-      - '.github/workflows/tests.yaml'
-      - 'Package.swift'
-      - 'Sources/**/*.swift'
-      - 'Samples/**/*.swift'
-      - 'Tests/**/*.swift'
     branches:
       - master
   pull_request:
-    branches:
-      - master
-    paths:
-      - '.github/workflows/tests.yaml'
-      - 'Package.swift'
-      - 'Sources/**/*.swift'
-      - 'Samples/**/*.swift'
-      - 'Tests/**/*.swift'
 
 env:
-  DEVELOPER_DIR: /Applications/Xcode_14.2.app/Contents/Developer
   NSUnbufferedIO: YES 
-  iOS_DESTINATION: "platform=iOS Simulator,OS=16.2,name=iPhone 14 Pro Max"
-  tvOS_DESTINATION: "platform=tvOS Simulator,OS=16.1,name=Apple TV"
 
 jobs:
+  Preflight:
+    name: Preflight Checks
+    if: ${{ !(github.event.pull_request.draft || false) }}
+    runs-on: ubuntu-latest
+    outputs:
+      is_master_or_tagged: ${{ steps.check_master.outputs.is_master_or_tagged }}
+      is_master: ${{ steps.check_master.outputs.is_master }}
+      is_draft: ${{ steps.check_draft_status.outputs.is_draft }}
+      tag_name: ${{ steps.check_master.outputs.tag_name }}
+      changed_files: ${{ steps.list_changed_files.outputs.changed_files }}
+      has_duplicates: ${{ steps.report_summary.outputs.has_duplicates }}
+      duplicate_files: ${{ steps.list_changed_files.outputs.duplicate_paths_list }}
+      has_source_changes: ${{ steps.check_source_changes.outputs.has_source_changes }}
+      has_documentation_changes: ${{ steps.check_documentation_changes.outputs.has_documentation_changes }}
+      has_secrets: ${{ steps.check_secrets.outputs.has_secrets }}
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+    - name: Check for Merge into Master or Release Tag
+      id: check_master
+      run: |
+        github_ref="${{ github.ref }}"
+        tag_name=${github_ref#refs/tags/}
+        if [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
+          echo "is_master_or_tagged=true" >> $GITHUB_OUTPUT
+          echo "is_master=true" >> $GITHUB_OUTPUT
+        elif [[ "${github_ref}" == refs/tags/* ]]; then
+          echo "is_master_or_tagged=true" >> $GITHUB_OUTPUT
+          echo "tag_name=${tag_name}" >> $GITHUB_OUTPUT
+        fi
+    - name: Check if the PR is a draft
+      id: check_draft_status
+      if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
+      shell: bash
+      run: |
+        echo "is_draft=true" >> $GITHUB_OUTPUT
+    - name: List Changed Files
+      id: list_changed_files
+      run: |
+        COMMITS_RANGE=""
+
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          # For Pull Requests: Compare the HEAD of the PR branch with its base branch.
+          COMMITS_RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+        elif [[ "${{ github.event_name }}" == "push" && "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]]; then
+          # For standard Push events, compare the current commit with the commit before the push.
+          COMMITS_RANGE="${{ github.event.before }}..${{ github.sha }}"
+        fi
+
+        if [[ -z "$COMMITS_RANGE" ]]; then
+          # If no commit range was identified from the github events, get a list of all changes
+          git ls-tree -r HEAD --name-only > changes
+        elif ! git diff --name-only "$COMMITS_RANGE" > changes; then
+          # If diffing the commit range failed (e.g. due to a force push or rebased branch), fall back to listing all changes
+          git ls-tree -r HEAD --name-only > changes
+        fi
+
+        {
+          echo 'changed_files<<EOF'
+          cat changes
+          echo EOF
+        } >> $GITHUB_OUTPUT
+    - name: Check for Source Changes
+      id: check_source_changes
+      run: |
+        if grep -qE '^(Sources/|Tests/|Package|\w+\.podspec)' changes; then
+          echo "has_source_changes=true" >> $GITHUB_OUTPUT
+        fi
+    - name: Check for Documentation Changes
+      id: check_documentation_changes
+      run: |
+        if grep -qE '^(Sources/.*\.(md|swift)|.github/workflows/documentation.yaml)' changes; then
+          echo "has_documentation_changes=true" >> $GITHUB_OUTPUT
+        fi
+    - name: Check for Integration Test Secrets
+      id: check_secrets
+      env:
+        TEST_CONFIGURATION: ${{ secrets.TEST_CONFIGURATION }}
+        TEST_OKTA_PLIST: ${{ secrets.TEST_OKTA_PLIST }}
+      run: |
+        if [[ -n "$TEST_CONFIGURATION" ]] && [[ -n "$TEST_OKTA_PLIST" ]]; then
+          echo "has_secrets=true" >> $GITHUB_OUTPUT
+        fi
+    - name: Report preflight check summary
+      id: report_summary
+      env:
+        is_master: ${{ steps.check_master.outputs.is_master }}
+        is_draft: ${{ steps.check_draft_status.outputs.is_draft }}
+        tag_name: ${{ steps.check_master.outputs.tag_name }}
+        changed_files: ${{ steps.list_changed_files.outputs.changed_files }}
+        has_source_changes: ${{ steps.check_source_changes.outputs.has_source_changes }}
+        has_documentation_changes: ${{ steps.check_documentation_changes.outputs.has_documentation_changes }}
+        has_secrets: ${{ steps.check_secrets.outputs.has_secrets }}
+      run: |
+        if [[ "$is_draft" == "true" ]]; then
+          echo "Is a draft PR"
+          export draft_status=":white_check_mark:"
+        fi
+        if [[ "$is_master" == "true" ]]; then
+          echo "Is committed to master"
+          export master_status=":white_check_mark:"
+        fi
+        if [[ -n "$tag_name" ]]; then
+          echo "Pushed tag \`$tag_name\`"
+          export tag_status=":white_check_mark: \`$tag_name\`"
+        fi
+        if [[ "$has_source_changes" == "true" ]]; then
+          echo "Has source changes"
+          export source_status=":white_check_mark:"
+        fi
+        if [[ "$has_documentation_changes" == "true" ]]; then
+          echo "Has documentation changes"
+          export doc_status=":white_check_mark:"
+        fi
+        if [[ "$has_secrets" == "true" ]]; then
+          echo "Has secrets available"
+          export secrets_status=":white_check_mark:"
+        fi
+
+        cat <<__EOF__ >> $GITHUB_STEP_SUMMARY
+        ## Preflight Status Checks
+        | Preflight Check | Enabled |
+        | --- | --- |
+        | Is a draft PR | ${draft_status} |
+        | Merged to \`master\` | ${master_status} |
+        | Commit tagged | ${tag_status} |
+        | Changed files | $(cat changes | wc -l) files changed |
+        | Has source changes | ${source_status} |
+        | Documentation rebuild needed | ${doc_status} |
+        | Has integration test secrets | ${secrets_status} |
+        __EOF__
+
+        ./.github/workflows/preflight-check_duplicate_files.sh Sources
+    - name: Upload Preflight Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: changes
+        path: changes
+
+  SwiftLint:
+    name: Lint Sources
+    needs: Preflight
+    if: ${{ needs.Preflight.outputs.has_source_changes == 'true' }}
+    runs-on: macos-15
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup Swift Lint
+      run: |
+        if ! which -s swiftlint; then
+          echo "Installing SwiftLint..."
+          brew install swiftlint
+        fi
+    - name: Lint code
+      run: |
+        swiftlint lint --reporter github-actions-logging Sources
+
   SwiftBuild:
-    name: Swift Unit Tests
-    runs-on: macos-12
+    name: Swift ${{ matrix.swift_version }} on ${{ matrix.os }}
+    needs: SwiftLint
+    if: ${{ !github.event.pull_request.draft && needs.Preflight.outputs.has_source_changes == 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+        - swift_version: "5.10"
+          os: macos-15
+        - swift_version: "6.0"
+          os: macos-15
+        - swift_version: "6.1"
+          os: macos-15
+        - swift_version: "6.2"
+          os: macos-15
+        - swift_version: "6.0"
+          os: ubuntu-latest
+    env:
+      LOG_NAME: "${{github.job}}-${{ matrix.swift_version }}-${{ matrix.os }}"
     timeout-minutes: 10
     steps:
-    - name: Get swift version
-      run: swift --version
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v2
+    - uses: ./.github/actions/setup-swift
+      with:
+        swift-version: "${{ matrix.swift_version }}"
     - name: Build
-      run: swift build --build-tests
+      run: swift build --build-tests $SWIFT_ARGUMENTS
     - name: Test
-      run: swift test --parallel
+      run: swift test $SWIFT_ARGUMENTS --skip-build --sanitize=thread
 
   Cocoapods:
     name: CocoaPods Build
-    runs-on: macos-12
-    timeout-minutes: 10
     needs:
       - SwiftBuild
+      - XcodeBuild
+    if: ${{ !github.event.pull_request.draft && needs.Preflight.outputs.has_source_changes == 'true' }}
+    runs-on: macos-15
+    strategy:
+      matrix:
+        platform: [iOS, tvOS, watchOS, macOS, visionOS]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    timeout-minutes: 10
     steps:
     - uses: actions/checkout@master
-    - name: OktaAuthFoundation.podspec
-      run: pod lib lint --allow-warnings OktaAuthFoundation.podspec
-    # TODO: Enable dependent podspec linting once unreleased local spec version checking is fixed.
-    #- name: OktaOAuth2.podspec
-    #  run: pod lib lint --allow-warnings OktaOAuth2.podspec
-    #- name: OktaDirectAuth.podspec
-    #  run: pod lib lint --allow-warnings OktaDirectAuth.podspec
-    #- name: OktaWebAuthenticationUI.podspec
-    #  run: pod lib lint --allow-warnings OktaWebAuthenticationUI.podspec
+    - name: Lint Podspec
+      run: pod lib lint OktaClient.podspec --include-podspecs="**.podspec" --allow-warnings --verbose --platforms=${{ matrix.platform }}
 
   XcodeBuild:
-    name: Xcode Unit Tests
-    runs-on: macos-12
+    name: Xcode ${{ matrix.xcode_version }} on ${{ matrix.destination }}
+    needs:
+    - SwiftBuild
+    - Documentation
+    if: ${{ !github.event.pull_request.draft && needs.Preflight.outputs.has_source_changes == 'true' }}
+    strategy:
+      matrix:
+        include:
+        - destination: "platform=iOS Simulator,OS=18.6,name=iPhone 16 Pro Max"
+          xcode_version: "16.4"
+          os: macos-15
+        - destination: "platform=tvOS Simulator,OS=18.5,name=Apple TV"
+          xcode_version: "16.4"
+          os: macos-15
+        - destination: "platform=visionOS Simulator,OS=2.5,name=Apple Vision Pro"
+          xcode_version: "16.4"
+          os: macos-15
+        - destination: "platform=watchOS Simulator,OS=11.5,name=Apple Watch Series 10 (46mm)"
+          xcode_version: "16.4"
+          os: macos-15
+        - destination: "platform=macOS,name=My Mac"
+          xcode_version: "16.4"
+          os: macos-15
+        - destination: "platform=macOS,name=My Mac"
+          xcode_version: "26.0"
+          os: macos-15
+    runs-on: ${{ matrix.os }}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.xcode_version }}.app/Contents/Developer
+      DESTINATION: "${{ matrix.destination }}"
+      LOG_NAME: "${{github.job}}-${{ matrix.xcode_version }}-${{ matrix.destination }}"
     timeout-minutes: 25
     steps:
     - uses: actions/checkout@master
+    - name: Setup test environment
+      run: xcrun simctl shutdown all
+    - name: Setup environment
+      run: |
+        mkdir -p .build/ci-logs
+
+        XCODE_MAJOR_VERSION=$(echo "${{ matrix.xcode_version }}" | cut -d'.' -f1)
+        if [[ "$XCODE_MAJOR_VERSION" -lt 16 ]]; then
+          echo "Xcode version is < 16. Filtering noisy warnings from xcbeautify output."
+          echo "XCBEAUTIFY_ARGS=--renderer github-actions --quieter --disable-logging" >> $GITHUB_ENV
+        else
+          echo "XCBEAUTIFY_ARGS=--renderer github-actions --disable-logging" >> $GITHUB_ENV
+        fi
     - name: Build AuthFoundation
       run: |
-        set -o pipefail
-        xcodebuild build \
-          -derivedDataPath ../Build/DerivedData \
-          -clonedSourcePackagesDirPath ../Build/ClonedSources \
+        set -o pipefail && xcrun xcodebuild build-for-testing \
+          -derivedDataPath .build/DerivedData \
+          -clonedSourcePackagesDirPath .build/ClonedSources \
           -scheme AuthFoundation \
-          -sdk iphonesimulator \
-          -destination "$iOS_DESTINATION" 2>&1
-    - name: Build OktaDirectAuth
-      run: |
-        set -o pipefail && xcodebuild build \
-          -derivedDataPath ../Build/DerivedData \
-          -clonedSourcePackagesDirPath ../Build/ClonedSources \
-          -scheme OktaDirectAuth \
-          -sdk iphonesimulator \
-          -destination "$iOS_DESTINATION" 2>&1
-    - name: Build OktaOAuth2
-      run: |
-        set -o pipefail && xcodebuild build \
-          -derivedDataPath ../Build/DerivedData \
-          -clonedSourcePackagesDirPath ../Build/ClonedSources \
-          -scheme OktaOAuth2 \
-          -sdk iphonesimulator \
-          -destination "$iOS_DESTINATION" 2>&1
-    - name: Build WebAuthenticationUI
-      run: |
-        set -o pipefail && xcodebuild build \
-          -derivedDataPath ../Build/DerivedData \
-          -clonedSourcePackagesDirPath ../Build/ClonedSources \
-          -scheme WebAuthenticationUI \
-          -sdk iphonesimulator \
-          -destination "$iOS_DESTINATION" 2>&1
+          -destination "$DESTINATION" 2>&1 | tee -a ".build/ci-logs/${LOG_NAME}.log" | xcbeautify $XCBEAUTIFY_ARGS
     - name: Test AuthFoundation
       run: |
-        set -o pipefail && xcodebuild test \
-          -derivedDataPath ../Build/DerivedData \
-          -clonedSourcePackagesDirPath ../Build/ClonedSources \
+        set -o pipefail && xcrun xcodebuild test-without-building \
+          CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+          -derivedDataPath .build/DerivedData \
+          -clonedSourcePackagesDirPath .build/ClonedSources \
           -scheme AuthFoundation \
-          -sdk iphonesimulator \
-          -destination "$iOS_DESTINATION" 2>&1
+          -destination "$DESTINATION" 2>&1 | tee -a ".build/ci-logs/${LOG_NAME}.log" | xcbeautify $XCBEAUTIFY_ARGS
+    - name: Build OktaDirectAuth
+      run: |
+        set -o pipefail && xcrun xcodebuild build-for-testing \
+          -derivedDataPath .build/DerivedData \
+          -clonedSourcePackagesDirPath .build/ClonedSources \
+          -scheme OktaDirectAuth \
+          -destination "$DESTINATION" 2>&1 | tee -a ".build/ci-logs/${LOG_NAME}.log" | xcbeautify $XCBEAUTIFY_ARGS
     - name: Test OktaDirectAuth
       run: |
-        set -o pipefail && xcodebuild test \
-          -derivedDataPath ../Build/DerivedData \
-          -clonedSourcePackagesDirPath ../Build/ClonedSources \
+        set -o pipefail && xcrun xcodebuild test-without-building \
+          CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+          -derivedDataPath .build/DerivedData \
+          -clonedSourcePackagesDirPath .build/ClonedSources \
           -scheme OktaDirectAuth \
-          -sdk iphonesimulator \
-          -destination "$iOS_DESTINATION" 2>&1
-    - name: Test OktaOAuth2
+          -destination "$DESTINATION" 2>&1 | tee -a ".build/ci-logs/${LOG_NAME}.log" | xcbeautify $XCBEAUTIFY_ARGS
+    - name: Build OAuth2Auth
       run: |
-        set -o pipefail && xcodebuild test \
-          -derivedDataPath ../Build/DerivedData \
-          -clonedSourcePackagesDirPath ../Build/ClonedSources \
-          -scheme OktaOAuth2 \
-          -sdk iphonesimulator \
-          -destination "$iOS_DESTINATION" 2>&1
-    - name: Test WebAuthenticationUI
+        set -o pipefail && xcrun xcodebuild build-for-testing \
+          -derivedDataPath .build/DerivedData \
+          -clonedSourcePackagesDirPath .build/ClonedSources \
+          -scheme OAuth2Auth \
+          -destination "$DESTINATION" 2>&1 | tee -a ".build/ci-logs/${LOG_NAME}.log" | xcbeautify $XCBEAUTIFY_ARGS
+    - name: Build OktaIdxAuth
       run: |
-        set -o pipefail && xcodebuild test \
-          -derivedDataPath ../Build/DerivedData \
-          -clonedSourcePackagesDirPath ../Build/ClonedSources \
-          -scheme WebAuthenticationUI \
-          -sdk iphonesimulator \
-          -destination "$iOS_DESTINATION" 2>&1
+        set -o pipefail && xcrun xcodebuild build-for-testing \
+          -derivedDataPath .build/DerivedData \
+          -clonedSourcePackagesDirPath .build/ClonedSources \
+          -scheme OktaIdxAuth \
+          -destination "$DESTINATION" 2>&1 | tee -a ".build/ci-logs/${LOG_NAME}.log" | xcbeautify $XCBEAUTIFY_ARGS
+    - name: Test OktaIdxAuth
+      run: |
+        set -o pipefail && xcrun xcodebuild test-without-building \
+          CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+          -derivedDataPath .build/DerivedData \
+          -clonedSourcePackagesDirPath .build/ClonedSources \
+          -scheme OktaIdxAuth \
+          -destination "$DESTINATION" 2>&1 | tee -a ".build/ci-logs/${LOG_NAME}.log" | xcbeautify $XCBEAUTIFY_ARGS
+    - name: Test OAuth2Auth
+      run: |
+        set -o pipefail && xcrun xcodebuild test-without-building \
+          CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+          -derivedDataPath .build/DerivedData \
+          -clonedSourcePackagesDirPath .build/ClonedSources \
+          -scheme OAuth2Auth \
+          -destination "$DESTINATION" 2>&1 | tee -a ".build/ci-logs/${LOG_NAME}.log" | xcbeautify $XCBEAUTIFY_ARGS
+    - name: Build BrowserSignin
+      if: "!contains(matrix.destination, 'tvOS') && !contains(matrix.destination, 'watchOS')"
+      run: |
+        set -o pipefail && xcrun xcodebuild build-for-testing \
+          -derivedDataPath .build/DerivedData \
+          -clonedSourcePackagesDirPath .build/ClonedSources \
+          -scheme BrowserSignin \
+          -destination "$DESTINATION" 2>&1 | tee -a ".build/ci-logs/${LOG_NAME}.log" | xcbeautify $XCBEAUTIFY_ARGS
+    - name: Test BrowserSignin
+      if: "!contains(matrix.destination, 'tvOS') && !contains(matrix.destination, 'watchOS')"
+      run: |
+        set -o pipefail && xcrun xcodebuild test-without-building \
+          CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+          -derivedDataPath .build/DerivedData \
+          -clonedSourcePackagesDirPath .build/ClonedSources \
+          -scheme BrowserSignin \
+          -destination "$DESTINATION" 2>&1 | tee -a ".build/ci-logs/${LOG_NAME}.log" | xcbeautify $XCBEAUTIFY_ARGS
+    - name: Upload Logs
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: Logs-${{ env.LOG_NAME }}
+        path: |
+          .build/ci-logs/**
+          .build/DerivedData/Logs/
+
+  Documentation:
+    name: Build Documentation Archives
+    needs: SwiftLint
+    if: ${{ !github.event.pull_request.draft && needs.Preflight.outputs.has_documentation_changes == 'true' }}
+    runs-on: macos-15
+    env:
+      DOCC_JSON_PRETTYPRINT: YES
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DESTINATION: "${{ matrix.destination }}"
+      LOG_NAME: "${{github.job}}-${{ matrix.xcode_version }}-${{ matrix.destination }}"
+      NSUnbufferedIO: YES
+    steps:
+    - uses: actions/checkout@master
+    - name: Swift Package Documentation lint
+      run: |
+        mkdir -p ~/Build/Docs
+
+        TARGET_LIST=""
+
+        for TARGET in $(swift package describe --type json | jq ".products[].name" | sed -e 's/"//g'); do
+            NAME=$(echo "$TARGET" | tr '[:upper:]' '[:lower:]')
+            TARGET_LIST="$TARGET_LIST --target $TARGET"
+        done
+
+        swift package --allow-writing-to-directory ~/Build/Docs generate-documentation \
+            --disable-indexing \
+            --output-path ~/Build/Docs \
+            --include-extended-types \
+            --symbol-graph-minimum-access-level public \
+            --experimental-skip-synthesized-symbols \
+            --enable-experimental-combined-documentation \
+            --enable-experimental-mentioned-in \
+            --enable-experimental-external-link-support \
+            --enable-experimental-overloaded-symbol-presentation \
+            --analyze \
+            --emit-fixits \
+            $TARGET_LIST | ./.github/workflows/swift-log-renderer.sh

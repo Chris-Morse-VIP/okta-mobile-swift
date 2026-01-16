@@ -14,7 +14,11 @@ import XCTest
 @testable import AuthFoundation
 @testable import TestCommon
 
-struct MockApiParsingContext: APIParsingContext {
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
+struct MockApiParsingContext: @unchecked Sendable, APIParsingContext {
     var codingUserInfo: [CodingUserInfoKey : Any]?
     
     let result: APIResponseResult?
@@ -32,15 +36,15 @@ class APIClientTests: XCTestCase {
     let requestId = UUID().uuidString
     
     override func setUpWithError() throws {
-        configuration = OAuth2Client.Configuration(baseURL: baseUrl,
+        configuration = OAuth2Client.Configuration(issuerURL: baseUrl,
                                                    clientId: "clientid",
-                                                   scopes: "openid")
+                                                   scope: "openid")
         client = MockApiClient(configuration: configuration,
                                session: urlSession,
                                baseURL: baseUrl)
     }
 
-    func testOverrideRequestResult() throws {
+    func testOverrideRequestResult() async throws {
         client = MockApiClient(configuration: configuration,
                                session: urlSession,
                                baseURL: baseUrl,
@@ -59,18 +63,7 @@ class APIClientTests: XCTestCase {
         let apiRequest = MockApiRequest(url: baseUrl)
         let context = MockApiParsingContext(result: .success)
 
-        let expect = expectation(description: "network request")
-        apiRequest.send(to: client, parsing: context, completion: { result in
-            switch result {
-            case .success(let response):
-                XCTAssertEqual(response.statusCode, 400)
-            case .failure(_):
-                XCTFail("Did not expect the request to fail")
-            }
-            expect.fulfill()
-        })
-        waitForExpectations(timeout: 9.0) { error in
-            XCTAssertNil(error)
-        }
+        let response = try await apiRequest.send(to: client, parsing: context)
+        XCTAssertEqual(response.statusCode, 400)
     }
 }

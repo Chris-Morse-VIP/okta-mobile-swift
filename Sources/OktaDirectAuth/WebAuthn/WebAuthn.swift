@@ -18,12 +18,14 @@ import Foundation
 ///
 /// ```swift
 /// let challengeStatus = try await flow.start("user@example.com", with: .webAuthn)
-/// guard case let .webAuthn(let request) = challengeStatus else { return }
+/// guard case let .continuation(let type) = challengeStatus,
+///       case let .webAuthn(let context) = type
+/// else { return }
 ///
 /// // Supply challenge request values to your authenticator
 /// let responseStatus = try await flow.resume(
 ///     challengeStatus,
-///     with: .webAuthnAssertion(.init(
+///     with: .webAuthn(.init(
 ///         clientDataJSON: authJson,
 ///         authenticatorData: authData,
 ///         signature: authSignature,
@@ -33,7 +35,7 @@ import Foundation
 /// ```
 public struct WebAuthn {
     /// Represents the credential challenge returned from the server when a WebAuthn authentication is initiated.
-    public struct CredentialRequestOptions: Codable {
+    public struct CredentialRequestOptions: Sendable, Codable, Equatable {
         /// The public key request options supplied to the client from the server.
         public let publicKey: WebAuthn.PublicKeyCredentialRequestOptions
         
@@ -41,7 +43,7 @@ public struct WebAuthn {
         public let authenticatorEnrollments: [AuthenticatorEnrollment]?
 
         /// Defines additional authenticator enrollment information supplied by the server.
-        public struct AuthenticatorEnrollment: Codable {
+        public struct AuthenticatorEnrollment: Sendable, Codable, Equatable {
             /// The ID supplied from the server representing this credential.
             ///
             /// **Note:** This should be identical to the ``WebAuthn/PublicKeyCredentialRequestOptions/rpID`` value.
@@ -57,8 +59,8 @@ public struct WebAuthn {
     
     /// Defines the set of data expected from the client in response to an authenticator challenge.
     ///
-    /// This value should be supplied to the ``DirectAuthenticationFlow/SecondaryFactor/webAuthnAssertion`` type.
-    public struct AuthenticatorAssertionResponse: Codable, Equatable {
+    /// This value should be supplied to the ``DirectAuthenticationFlow/ContinuationFactor/webAuthn(response:)`` type.
+    public struct AuthenticatorAssertionResponse: Sendable, Codable, Equatable {
         /// The client data JSON response, represented as a string.
         public let clientDataJSON: String
         
@@ -70,9 +72,17 @@ public struct WebAuthn {
         
         /// The optional user handle to supply to the server, typically if the resident key is enabled.
         public let userHandle: String?
+        
+        /// Initializer to create the response from an authenticator assertion, to send to the Authorization Server.
+        public init(clientDataJSON: String, authenticatorData: String, signature: String, userHandle: String? = nil) {
+            self.clientDataJSON = clientDataJSON
+            self.authenticatorData = authenticatorData
+            self.signature = signature
+            self.userHandle = userHandle
+        }
     }
 }
 
 extension WebAuthn.CredentialRequestOptions: JSONDecodable {
-    public static var jsonDecoder = JSONDecoder()
+    public static let jsonDecoder = JSONDecoder()
 }

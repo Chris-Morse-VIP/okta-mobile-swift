@@ -24,12 +24,12 @@ struct DefaultIDTokenValidator: IDTokenValidator {
         case issuer, audience, scheme, algorithm, expirationTime, issuedAtTime, nonce, maxAge, subject
 
         static var vipIssuedChecks: [ValidationCheck] {
-            return [.issuer, .audience, .issuedAtTime, subject]
+            return [.issuer, .audience, .issuedAtTime, .subject]
         }
     }
     
     // swiftlint:disable cyclomatic_complexity
-    func validate(token: JWT, issuer: URL, clientId: String, context: IDTokenValidatorContext?) throws {
+    func validate(token: JWT, issuer: URL, clientId: String, context: (any IDTokenValidatorContext)?) throws {
         for check in checks {
             switch check {
             case .issuer:

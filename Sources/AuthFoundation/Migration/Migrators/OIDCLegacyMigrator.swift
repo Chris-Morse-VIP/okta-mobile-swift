@@ -12,11 +12,11 @@
 
 import Foundation
 
-#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
+#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS) || (swift(>=5.10) && os(visionOS))
 
 private let accountIdRegex = try? NSRegularExpression(pattern: "0oa[0-9a-zA-Z]{17}")
 
-extension SDKVersion.Migration {
+extension Migration {
     /// Migrator capable of importing credentials from the legacy `OktaOidc` SDK.
     ///
     /// If your application previously used the `OktaOidc` SDK, you can use this to register your client configuration to enable credentials already stored within your user's devices to be migrated to the new AuthFoundation SDK.
@@ -42,20 +42,11 @@ extension SDKVersion.Migration {
             try register(try OAuth2Client.PropertyListConfiguration(plist: fileURL))
         }
 
-        @available(*, deprecated, renamed: "register(clientId:)")
-        public static func register(issuer: URL,
-                                    clientId: String,
-                                    redirectUri: URL,
-                                    scopes: String)
-        {
-            register(clientId: clientId)
-        }
-        
         /// Registers the legacy OIDC migration using the supplied configuration values.
         /// - Parameters:
         ///   - clientId: Client ID for your application.
         public static func register(clientId: String? = nil) {
-            SDKVersion.register(migrator: LegacyOIDC(clientId: clientId))
+            Migration.register(migrator: LegacyOIDC(clientId: clientId))
         }
         
         private static func register(_ config: OAuth2Client.PropertyListConfiguration) throws {
@@ -164,9 +155,10 @@ extension SDKVersion.Migration {
                 idToken = nil
             }
 
-            let configuration = OAuth2Client.Configuration(baseURL: issuer,
+            let configuration = OAuth2Client.Configuration(issuerURL: issuer,
                                                            clientId: clientId,
-                                                           scopes: scope)
+                                                           scope: scope,
+                                                           redirectUri: redirectURL)
             var clientSettings: [String: String] = [
                 "client_id": clientId,
                 "redirect_uri": redirectURL.absoluteString,
@@ -179,17 +171,17 @@ extension SDKVersion.Migration {
             
             let issueDate = idToken?.issuedAt ?? Date()
 
-            let token = Token(id: item.account,
-                              issuedAt: issueDate,
-                              tokenType: tokenType,
-                              expiresIn: expiresIn,
-                              accessToken: accessToken,
-                              scope: scope,
-                              refreshToken: tokenResponse.refreshToken,
-                              idToken: idToken,
-                              deviceSecret: nil,
-                              context: Token.Context(configuration: configuration,
-                                                     clientSettings: clientSettings))
+            let token = try Token(id: item.account,
+                                  issuedAt: issueDate,
+                                  tokenType: tokenType,
+                                  expiresIn: expiresIn,
+                                  accessToken: accessToken,
+                                  scope: scope,
+                                  refreshToken: tokenResponse.refreshToken,
+                                  idToken: idToken,
+                                  deviceSecret: nil,
+                                  context: Token.Context(configuration: configuration,
+                                                         clientSettings: clientSettings))
             
             var security = Credential.Security.standard
             if let accessibility = model?.accessibility,
@@ -213,7 +205,7 @@ extension SDKVersion.Migration {
                                                   security: security)
             try item.delete()
             
-            NotificationCenter.default.post(name: .credentialMigrated, object: credential)
+            TaskData.notificationCenter.post(name: .credentialMigrated, object: credential)
         }
         
         @objc(_OIDCLegacyStateManager)

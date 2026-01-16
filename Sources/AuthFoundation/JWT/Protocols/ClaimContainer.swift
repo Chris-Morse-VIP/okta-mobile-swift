@@ -15,28 +15,33 @@ import Foundation
 /// Protocol used to define shared behavior when an object can contain claims.
 ///
 /// > Note: This does not apply to JWT, which while it contains claims, it has a different format which includes headers and signatures.
-public protocol JSONClaimContainer: HasClaims, JSONDecodable {}
+public protocol JSONClaimContainer: HasClaims, JSONDecodable {
+    var json: JSON { get }
+    
+    init(_ json: JSON) throws
+}
 
 extension JSONClaimContainer {
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: JSONCodingKeys.self)
-        try payload
-            .compactMap { (key: String, value: Any) in
-                guard let key = JSONCodingKeys(stringValue: key) else { return nil }
-                return (key, value)
-            }
-            .forEach { (key: JSONCodingKeys, value: Any) in
-                if let value = value as? Bool {
-                    try container.encode(value, forKey: key)
-                } else if let value = value as? String {
-                    try container.encode(value, forKey: key)
-                } else if let value = value as? Int {
-                    try container.encode(value, forKey: key)
-                } else if let value = value as? Double {
-                    try container.encode(value, forKey: key)
-                } else if let value = value as? [String: String] {
-                    try container.encode(value, forKey: key)
-                }
-            }
+    @_documentation(visibility: internal)
+    public init(_ data: Data) throws {
+        try self.init(try JSON(data))
     }
 }
+
+extension JSONClaimContainer where Self: Decodable {
+    @_documentation(visibility: internal)
+    public init(from decoder: any Decoder) throws {
+        try self.init(try JSON(from: decoder))
+    }
+    
+    @_documentation(visibility: internal)
+    public func encode(to encoder: any Encoder) throws {
+        try json.encode(to: encoder)
+    }
+}
+
+extension JSONClaimContainer {
+    /// The raw payload of provider metadata claims from the JSON object.
+    public var payload: [String: any Sendable] { json.payload }
+}
+

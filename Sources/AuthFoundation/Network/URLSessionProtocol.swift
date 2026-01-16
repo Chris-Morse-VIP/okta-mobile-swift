@@ -12,25 +12,37 @@
 
 import Foundation
 
-#if os(Linux)
+#if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
 
 /// Protocol defining the interface for interacting with a URLSession. This is used to provide mocking for unit tests.
-public protocol URLSessionProtocol {
-    typealias DataTaskResult = (Data?, HTTPURLResponse?, Error?) -> Void
-    func dataTaskWithRequest(_ request: URLRequest, completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTaskProtocol
+@_documentation(visibility: internal)
+public protocol URLSessionProtocol: Sendable {
+    func data(for request: URLRequest) async throws -> (Data, URLResponse)
     var configuration: URLSessionConfiguration { get }
 }
 
-/// Protocol defining the interface for interacting with a URLSession. This is used to provide mocking for unit tests.
-public protocol URLSessionDataTaskProtocol {
-    func resume()
-}
-
+@_documentation(visibility: internal)
 extension URLSession: URLSessionProtocol {
-    public func dataTaskWithRequest(_ request: URLRequest, completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTaskProtocol {
-        dataTask(with: request, completionHandler: completionHandler)
+#if canImport(FoundationNetworking)
+    public func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        return try await withCheckedThrowingContinuation { continuation in
+            let task = self.dataTask(with: request) { data, response, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                guard let data, let response else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                    return
+                }
+                
+                continuation.resume(returning: (data, response))
+            }
+            task.resume()
+        }
     }
+#endif
 }
-extension URLSessionDataTask: URLSessionDataTaskProtocol {}

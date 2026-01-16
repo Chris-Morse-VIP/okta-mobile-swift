@@ -11,7 +11,7 @@
 //
 
 import UIKit
-import OktaOAuth2
+import OAuth2Auth
 import OktaAuthNative
 
 class NativeSignInViewController: UIViewController {
@@ -72,7 +72,7 @@ class NativeSignInViewController: UIViewController {
     @IBAction func signIn(_ sender: Any) {
         guard let username = usernameField.text,
               let password = passwordField.text,
-              let issuer = config?.issuer
+              let issuer = config?.issuerURL
         else {
             show("Invalid username or password")
             return

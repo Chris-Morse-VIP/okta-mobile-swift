@@ -13,21 +13,15 @@
 import Foundation
 import AuthFoundation
 
-extension OpenIdConfiguration {
-    var primaryAuthenticateEndpoint: URL? {
-        tokenEndpoint.url(replacing: "/token", with: "/primary-authenticate")
-    }
-}
-
-struct OOBResponse: Codable, HasTokenParameters {
+struct OOBResponse: Codable, Equatable, HasTokenParameters, JSONDecodable {
     let oobCode: String
     let expiresIn: TimeInterval
-    let interval: TimeInterval
+    let interval: TimeInterval?
     let channel: DirectAuthenticationFlow.OOBChannel
     let bindingMethod: BindingMethod
     let bindingCode: String?
 
-    init(oobCode: String, expiresIn: TimeInterval, interval: TimeInterval, channel: DirectAuthenticationFlow.OOBChannel, bindingMethod: BindingMethod, bindingCode: String? = nil) {
+    init(oobCode: String, expiresIn: TimeInterval, interval: TimeInterval?, channel: DirectAuthenticationFlow.OOBChannel, bindingMethod: BindingMethod, bindingCode: String? = nil) {
         self.oobCode = oobCode
         self.expiresIn = expiresIn
         self.interval = interval
@@ -36,21 +30,44 @@ struct OOBResponse: Codable, HasTokenParameters {
         self.bindingCode = bindingCode
     }
     
-    func tokenParameters(currentStatus: DirectAuthenticationFlow.Status?) -> [String: String] {
+    func tokenParameters(currentStatus: DirectAuthenticationFlow.Status?) -> [String: any APIRequestArgument] {
         ["oob_code": oobCode]
+    }
+    
+    static var jsonDecoder: JSONDecoder {
+        let result = JSONDecoder()
+        result.keyDecodingStrategy = .convertFromSnakeCase
+        return result
+    }
+
+    static func == (lhs: OOBResponse, rhs: OOBResponse) -> Bool {
+        let tolerance: TimeInterval = 0.000001
+        
+        return lhs.oobCode == rhs.oobCode
+        && abs(lhs.expiresIn - rhs.expiresIn) < tolerance
+        && abs((lhs.interval ?? 0) - (rhs.interval ?? 0)) < tolerance
+        && lhs.channel == rhs.channel
+        && lhs.bindingMethod == rhs.bindingMethod
+        && lhs.bindingCode == rhs.bindingCode
     }
 }
 
-struct OOBAuthenticateRequest {
+struct OOBAuthenticateRequest: AuthenticationFlowRequest {
+    typealias Flow = DirectAuthenticationFlow
+    
     let url: URL
     let clientConfiguration: OAuth2Client.Configuration
+    let context: Flow.Context
     let loginHint: String
     let channelHint: DirectAuthenticationFlow.OOBChannel
+    let challengeHint: GrantType
     
     init(openIdConfiguration: OpenIdConfiguration,
          clientConfiguration: OAuth2Client.Configuration,
+         context: DirectAuthenticationFlow.Context,
          loginHint: String,
-         channelHint: DirectAuthenticationFlow.OOBChannel) throws
+         channelHint: DirectAuthenticationFlow.OOBChannel,
+         challengeHint: GrantType) throws
     {
         guard let url = openIdConfiguration.primaryAuthenticateEndpoint else {
             throw OAuth2Error.cannotComposeUrl
@@ -58,14 +75,17 @@ struct OOBAuthenticateRequest {
         
         self.url = url
         self.clientConfiguration = clientConfiguration
+        self.context = context
         self.loginHint = loginHint
         self.channelHint = channelHint
+        self.challengeHint = challengeHint
     }
 }
 
-enum BindingMethod: String, Codable {
+enum BindingMethod: String, Codable, Equatable {
     case none
     case transfer
+    case prompt
 }
 
 extension OOBAuthenticateRequest: APIRequest, APIRequestBody {
@@ -74,17 +94,21 @@ extension OOBAuthenticateRequest: APIRequest, APIRequestBody {
     var httpMethod: APIRequestMethod { .post }
     var contentType: APIContentType? { .formEncoded }
     var acceptsType: APIContentType? { .json }
-    var bodyParameters: [String: Any]? {
-        var result: [String: Any] = [
-            "client_id": clientConfiguration.clientId,
-            "login_hint": loginHint,
-            "channel_hint": channelHint.rawValue
-        ]
-        
-        if let parameters = clientConfiguration.authentication.additionalParameters {
-            result.merge(parameters, uniquingKeysWith: { $1 })
-        }
+    var category: AuthFoundation.OAuth2APIRequestCategory { .other }
 
+    var bodyParameters: [String: any APIRequestArgument]? {
+        var result = clientConfiguration.parameters(for: category) ?? [:]
+        result.merge(context.parameters(for: category))
+        result.merge([
+            "login_hint": loginHint,
+            "channel_hint": channelHint,
+            "challenge_hint": challengeHint,
+        ])
+        
+        if result["client_id"] == nil {
+            result["client_id"] = clientConfiguration.clientId
+        }
+        
         return result
     }
 }

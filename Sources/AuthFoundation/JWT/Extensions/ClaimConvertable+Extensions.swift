@@ -12,53 +12,142 @@
 
 import Foundation
 
-extension String: ClaimConvertable {}
-extension Bool: ClaimConvertable {}
-extension Int: ClaimConvertable {}
-extension Double: ClaimConvertable {}
-extension Float: ClaimConvertable {}
-extension Array<String>: ClaimConvertable {}
-extension Dictionary<String, String>: ClaimConvertable {}
-extension URL: ClaimConvertable {}
-extension Date: ClaimConvertable {}
-extension JWTClaim: ClaimConvertable {}
-extension GrantType: ClaimConvertable {}
-extension NSString: ClaimConvertable {}
-extension NSNumber: ClaimConvertable {}
+extension JSON {
+    var payload: [String: any Sendable] {
+        get {
+            value.anyValue as? [String: any Sendable] ?? [:]
+        }
+        set { value.anyValue = newValue }
+    }
+}
 
-extension ClaimConvertable where Self == Date {
-    public static func claim(_ claim: String,
-                             in type: any HasClaims,
-                             from value: Any?) -> Self?
-    {
-        if let time = value as? Int {
-            return Date(timeIntervalSince1970: TimeInterval(time))
+@_documentation(visibility: private)
+extension String: ClaimConvertable {}
+
+@_documentation(visibility: private)
+extension Bool: ClaimConvertable {
+    public static func convert(from value: Any?) -> Self? {
+        if let value = value as? Bool {
+            return value
         }
         
-        if let time = value as? String {
-            return ISO8601DateFormatter().date(from: time)
+        if let value = value as? Int,
+           value == 0 || value == 1
+        {
+            return value == 1
         }
         
         return nil
     }
 }
 
-extension ClaimConvertable where Self == URL {
-    public static func claim(_ claim: String,
-                             in type: any HasClaims,
-                             from value: Any?) -> Self?
-    {
+@_documentation(visibility: private)
+extension Int: ClaimConvertable {
+    public static func convert(from value: Any?) -> Self? {
+        if let value = value as? Int {
+            return value
+        }
+        
+        if let value = value as? Double {
+            return Int(value)
+        }
+        
+        return nil
+    }
+}
+
+@_documentation(visibility: private)
+extension Double: ClaimConvertable {
+    public static func convert(from value: Any?) -> Self? {
+        if let value = value as? Double {
+            return value
+        }
+        
+        if let value = value as? Int {
+            return Double(value)
+        }
+
+        return nil
+    }
+}
+
+@_documentation(visibility: private)
+extension Float: ClaimConvertable {
+    public static func convert(from value: Any?) -> Self? {
+        if let value = value as? Float {
+            return value
+        }
+        
+        if let value = value as? Double {
+            return Float(value)
+        }
+
+        if let value = value as? Int {
+            return Float(value)
+        }
+
+        return nil
+    }
+}
+
+@_documentation(visibility: private)
+extension JWTClaim: ClaimConvertable {}
+
+@_documentation(visibility: private)
+extension GrantType: ClaimConvertable {}
+
+#if swift(<6.0)
+extension NSString: @unchecked Sendable, ClaimConvertable {}
+#else
+@_documentation(visibility: private)
+extension NSString: @unchecked @retroactive Sendable, ClaimConvertable {}
+#endif
+
+@_documentation(visibility: private)
+extension NSNumber: ClaimConvertable {}
+
+@_documentation(visibility: private)
+extension URL: ClaimConvertable {
+    public static func convert(from value: Any?) -> Self? {
         guard let string = value as? String else { return nil }
         return URL(string: string)
     }
 }
 
-extension ClaimConvertable where Self: IsClaim {
-    public static func claim(_ claim: String,
-                             in type: any HasClaims,
-                             from value: Any?) -> Self?
-    {
-        guard let value = value as? String else { return nil }
-        return .init(rawValue: value)
+@_documentation(visibility: private)
+extension Date: ClaimConvertable {
+    public static func convert(from value: Any?) -> Self? {
+        if let time = value as? Int {
+            return Date(timeIntervalSince1970: TimeInterval(time))
+        }
+        
+        if let time = value as? String {
+            if let date = ISO8601DateFormatter().date(from: time) {
+                return date
+            }
+            
+            if let date = httpDateFormatter.date(from: time) {
+                return date
+            }
+        }
+        
+        return nil
     }
 }
+
+@_documentation(visibility: private)
+extension ClaimConvertable where Self: RawRepresentable {
+    public static func convert(from value: Any?) -> Self? {
+        if let value = value as? Self {
+            return value
+        }
+        
+        if let value = value as? Self.RawValue {
+            return Self(rawValue: value)
+        }
+
+        return nil
+    }
+}
+
+extension ClaimConvertable where Self: APIRequestArgument {}

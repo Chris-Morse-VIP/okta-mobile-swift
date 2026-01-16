@@ -12,10 +12,14 @@
 
 import Foundation
 
+#if !COCOAPODS
+import CommonSupport
+#endif
+
 /// Describes an individual key from an authorization server, which can be used to validate tokens or encrypt content.
 ///
 /// > Warning: At this time, this class only supports RSA Public Keys.
-public struct JWK: Codable, Equatable, Identifiable, Hashable {
+public struct JWK: Sendable, Codable, Equatable, Identifiable, Hashable {
     /// The type of this key.
     public let type: KeyType
     
@@ -37,9 +41,13 @@ public struct JWK: Codable, Equatable, Identifiable, Hashable {
     /// The validator instance used to perform verification steps on JWT tokens.
     ///
     /// A default implementation of ``JWKValidator`` is provided and will be used if this value is not changed.
-    public static var validator: JWKValidator = DefaultJWKValidator()
+    public static var validator: any JWKValidator {
+        get { lock.withLock { _validator } }
+        set { lock.withLock { _validator = newValue } }
+    }
 
-    public init(from decoder: Decoder) throws {
+    @_documentation(visibility: internal)
+    public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         type = try container.decode(KeyType.self, forKey: .keyType)
         id = try container.decodeIfPresent(String.self, forKey: .keyId)
@@ -56,7 +64,8 @@ public struct JWK: Codable, Equatable, Identifiable, Hashable {
         }
     }
 
-    public func encode(to encoder: Encoder) throws {
+    @_documentation(visibility: internal)
+    public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(type, forKey: .keyType)
         try container.encodeIfPresent(id, forKey: .keyId)
@@ -104,4 +113,8 @@ public struct JWK: Codable, Equatable, Identifiable, Hashable {
     static func resetToDefault() {
         validator = DefaultJWKValidator()
     }
+
+    // MARK: Private properties / methods
+    private static let lock = Lock()
+    nonisolated(unsafe) private static var _validator: any JWKValidator = DefaultJWKValidator()
 }

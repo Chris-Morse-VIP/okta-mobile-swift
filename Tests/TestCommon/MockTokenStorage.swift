@@ -11,11 +11,16 @@
 //
 
 import Foundation
+
+#if !COCOAPODS
+import CommonSupport
+#endif
+
 @testable import AuthFoundation
 
-class MockTokenStorage: TokenStorage {
-    var error: Error?
-    var prompt: String?
+class MockTokenStorage: @unchecked Sendable, TokenStorage {
+    @LockedValue var error: (any Error)?
+    @LockedValue var prompt: String?
 
     var defaultTokenID: String? {
         didSet {
@@ -37,8 +42,14 @@ class MockTokenStorage: TokenStorage {
     private var allTokens: [String:(Token,[Credential.Security])] = [:]
     private var metadata: [String:Token.Metadata] = [:]
     
-    func add(token: Token, metadata: Token.Metadata?, security: [Credential.Security]) throws {
-        let metadata = metadata ?? Token.Metadata(token: token, tags: [:])
+    func add(token: Token, metadata tokenMetadata: Token.Metadata?, security: [Credential.Security]) throws {
+        let metadata: Token.Metadata
+        if let tokenMetadata {
+            metadata = tokenMetadata
+        } else {
+            metadata = try Token.Metadata(token: token, tags: [:])
+        }
+
         if let error = error {
             throw error
         }
@@ -74,7 +85,10 @@ class MockTokenStorage: TokenStorage {
             throw error
         }
         
-        let item = allTokens[id]!
+        guard let item = allTokens[id] else {
+            throw TokenError.cannotReplaceToken
+        }
+
         allTokens[id] = (token, item.1)
     }
     
@@ -87,7 +101,7 @@ class MockTokenStorage: TokenStorage {
         metadata.removeValue(forKey: id)
     }
     
-    func get(token id: String, prompt: String?, authenticationContext: TokenAuthenticationContext? = nil) throws -> Token {
+    func get(token id: String, prompt: String?, authenticationContext: (any TokenAuthenticationContext)? = nil) throws -> Token {
         if let error = error {
             throw error
         }
@@ -98,6 +112,6 @@ class MockTokenStorage: TokenStorage {
         }
         return item.0
     }
-    
-    var delegate: TokenStorageDelegate?
+
+    var delegate: (any TokenStorageDelegate)?
 }

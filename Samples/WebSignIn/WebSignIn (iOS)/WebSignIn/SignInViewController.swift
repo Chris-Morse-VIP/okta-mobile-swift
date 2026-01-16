@@ -11,7 +11,7 @@
 //
 
 import UIKit
-import WebAuthenticationUI
+import BrowserSignin
 
 class SignInViewController: UIViewController {
     @IBOutlet weak var signInButton: UIButton!
@@ -19,11 +19,7 @@ class SignInViewController: UIViewController {
     @IBOutlet weak var ephemeralSwitch: UISwitch!
     @IBOutlet weak var clientIdLabel: UILabel!
 
-    let auth = WebAuthentication.shared
-    let options: [WebAuthentication.Option]? = [
-        // .login(hint: "jane.doe@example.com"),
-        // .prompt(.login)
-    ]
+    let auth = BrowserSignin.shared
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -58,8 +54,9 @@ class SignInViewController: UIViewController {
     }
 
     @IBAction func signIn(_ sender: Any) {
+        signInButton.isEnabled = false
         let window = viewIfLoaded?.window
-        auth?.signIn(from: window, options: options) { result in
+        auth?.signIn(from: window) { result in
             switch result {
             case .success(let token):
                 do {
@@ -75,6 +72,10 @@ class SignInViewController: UIViewController {
                 self.dismiss(animated: true)
             case .failure(let error):
                 self.show(error: error)
+            }
+            
+            Task { @MainActor in
+                self.signInButton.isEnabled = true
             }
         }
     }

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "group:">
+   </FileRef>
+   <Group
+      location = "container:"
+      name = "Samples">
+      <FileRef
+         location = "group:Samples/Examples">
+      </FileRef>
+      <FileRef
+         location = "group:Samples/DirectAuthSignIn/DirectAuthSignIn.xcodeproj">
+      </FileRef>
+      <FileRef
+         location = "group:Samples/IdxAuthSignIn/IdxAuthSignIn.xcodeproj">
+      </FileRef>
+      <FileRef
+         location = "group:Samples/ClassicNativeAuth/ClassicNativeAuth.xcodeproj">
+      </FileRef>
+      <FileRef
+         location = "group:Samples/OIDCMigration/OIDCMigration.xcodeproj">
+      </FileRef>
+      <FileRef
+         location = "group:Samples/UserPasswordSignIn/UserPasswordSignIn.xcodeproj">
+      </FileRef>
+      <FileRef
+         location = "group:Samples/DeviceAuthSignIn/DeviceAuthSignIn.xcodeproj">
+      </FileRef>
+      <FileRef
+         location = "group:Samples/JWTSignIn/JWTSignIn.xcodeproj">
+      </FileRef>
+      <FileRef
+         location = "group:Samples/WebSignIn/WebSignIn.xcodeproj">
+      </FileRef>
+      <FileRef
+         location = "group:Samples/README.md">
+      </FileRef>
+   </Group>
+</Workspace>

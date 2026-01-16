@@ -29,6 +29,12 @@ extension SignInView {
                 return .oob(channel: .push)
             case .password:
                 return nil
+            case .sms:
+                return .oob(channel: .sms)
+            case .voice:
+                return .oob(channel: .voice)
+            default:
+                return nil
             }
         }
         
@@ -65,7 +71,7 @@ extension SignInView {
                         Button("Continue") {
                             Task {
                                 do {
-                                    status = try await flow.resume(status, with: factor)
+                                    status = try await flow.resume(with: factor)
                                     if case let .success(token) = status {
                                         Credential.default = try Credential.store(token)
                                     }

@@ -13,9 +13,9 @@
 import UIKit
 
 #if os(tvOS)
-import OktaOAuth2
-#elseif canImport(WebAuthenticationUI) && !WEB_AUTH_DISABLED
-import WebAuthenticationUI
+import OAuth2Auth
+#elseif canImport(BrowserSignin) && !WEB_AUTH_DISABLED
+import BrowserSignin
 #else
 import AuthFoundation
 #endif
@@ -47,17 +47,11 @@ class ProfileTableViewController: UITableViewController {
         didSet {
             configure(credential?.userInfo)
             credential?.automaticRefresh = true
-            credential?.refreshIfNeeded { result in
-                switch result {
-                case .success:
-                    self.credential?.userInfo { result in
-                        guard case let .success(userInfo) = result else { return }
-                        DispatchQueue.main.async {
-                            self.configure(userInfo)
-                        }
-                    }
-                    
-                case .failure(let error):
+            Task { @MainActor in
+                do {
+                    try await self.credential?.refreshIfNeeded()
+                    self.configure(try await self.credential?.userInfo())
+                } catch {
                     self.show(error: error)
                 }
             }
@@ -167,15 +161,10 @@ class ProfileTableViewController: UITableViewController {
             }
         }))
         
-        #if !os(tvOS) && canImport(WebAuthenticationUI) && !WEB_AUTH_DISABLED
+        #if !os(tvOS) && canImport(BrowserSignin) && !WEB_AUTH_DISABLED
         if let token = Credential.default?.token {
-            var options: [WebAuthentication.Option]?
-            options = []
-            // TODO: Uncomment the following line to force a user to sign in again while signing out.
-            // options = [.prompt(.login)]
-            
             alert.addAction(.init(title: "End a session", style: .destructive) { _ in
-                WebAuthentication.shared?.signOut(token: token, options: options) { result in
+                BrowserSignin.shared?.signOut(from: nil, token: token) { result in
                     switch result {
                     case .success:
                         try? Keychain.deleteTokens()

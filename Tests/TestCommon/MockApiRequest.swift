@@ -13,6 +13,10 @@
 import Foundation
 @testable import AuthFoundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 struct MockApiRequest: APIRequest {
     var url: URL
     var cachePolicy: URLRequest.CachePolicy

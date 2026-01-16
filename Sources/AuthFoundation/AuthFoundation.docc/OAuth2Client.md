@@ -1,9 +1,5 @@
 # ``AuthFoundation/OAuth2Client``
 
-@Metadata {
-    @DocumentationExtension(mergeBehavior: append)
-}
-
 This class serves two purposes:
 1. Expose high-level actions a client can perform against an OAuth2 service.
 2. Connect authentication flows to the OAuth2 servers they intend to authenticate against.
@@ -26,7 +22,7 @@ When working with an ``OAuth2Client``, either for the purposes of authenticating
 
 ### Authenticating using a custom URLSession
 
-Within the OktaOAuth2 library, the initializers for the various authentication flows can accept a custom ``OAuth2Client`` instance that would then be used for all API requests made to process the login. The client ID and other settings from the ``OAuth2Client`` are used within that flow.
+Within the OAuth2Auth library, the initializers for the various authentication flows can accept a custom ``OAuth2Client`` instance that would then be used for all API requests made to process the login. The client ID and other settings from the ``OAuth2Client`` are used within that flow.
 
 ### Using a custom URLSession for existing token lifecycle
 
@@ -35,4 +31,4 @@ When using the ``Credential`` class to manage operations with a user's ``Token``
 If you want to manually assign your own ``OAuth2Client`` to a credential, you can either:
 
 1. Create a credential manually using the ``Credential/init(token:oauth2:)`` initializer. Note that you'll need to ensure the token and client's configuration match (e.g. the same client ID and base URL), otherwise an exception may be thrown.
-2. Implement the ``CredentialDataSource`` protocol and supply a custom URLSession instance in the ``CredentialDataSource/urlSession(for:)-4uxwd`` method.
+2. Implement the ``CredentialDataSource`` protocol and supply a custom URLSession instance in the ``CredentialDataSource/urlSession(for:)`` method.

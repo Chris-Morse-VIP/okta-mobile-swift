@@ -20,15 +20,12 @@ class SignInViewController: UIHostingController<SignInView> {
         let flow: DirectAuthenticationFlow?
         
         // Workaround to remove the `device_sso` scope, when included in the property list.
-        if let configuration = try? OAuth2Client.PropertyListConfiguration(),
-           let ssoRange = configuration.scopes.range(of: "device_sso")
+        if var configuration = try? OAuth2Client.PropertyListConfiguration(),
+           let index = configuration.scope.firstIndex(of: "device_sso")
         {
-            var scopes = configuration.scopes
-            scopes.removeSubrange(ssoRange)
+            configuration.scope.remove(at: index)
             
-            flow = DirectAuthenticationFlow(issuer: configuration.issuer,
-                                            clientId: configuration.clientId,
-                                            scopes: scopes)
+            flow = try? DirectAuthenticationFlow(client: OAuth2Client(configuration))
         } else {
             flow = try? DirectAuthenticationFlow()
         }

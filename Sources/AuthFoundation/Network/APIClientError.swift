@@ -12,20 +12,24 @@
 
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 /// Errors that may occur at the API or network level.
 public enum APIClientError: Error {
     /// Could not create an invalid URL. This typically means the string passed to `URL` was malformed.
     case invalidUrl
     
     /// No response received from the server.
-    case missingResponse
-    
+    case missingResponse(request: URLRequest? = nil)
+
     /// Did not receive an HTTP response.
     case invalidResponse
     
     /// An error occurred while parsing the server response.
-    case cannotParseResponse(error: Error)
-    
+    case cannotParseResponse(error: any Error)
+
     /// Cannot send invalid request data to the server.
     case invalidRequestData
     
@@ -36,16 +40,27 @@ public enum APIClientError: Error {
     case unsupportedContentType(_ type: APIContentType)
     
     /// Received the given HTTP error from the server.
-    case serverError(_ error: Error)
-    
+    case httpError(_ error: any Error)
+
     /// Received the given HTTP response status code.
     case statusCode(_ statusCode: Int)
     
     /// Could not validate the received token.
-    case validation(error: Error)
-    
+    case validation(error: any Error)
+
     /// An unknown HTTP error was encountered.
     case unknown
+}
+
+extension APIClientError {
+    @_documentation(visibility: internal)
+    public init(_ error: any Error) {
+        if let error = error as? APIClientError {
+            self = error
+        } else {
+            self = .httpError(error)
+        }
+    }
 }
 
 extension APIClientError: LocalizedError {
@@ -57,12 +72,21 @@ extension APIClientError: LocalizedError {
                                      bundle: .authFoundation,
                                      comment: "Invalid URL")
             
-        case .missingResponse:
-            return NSLocalizedString("missing_response_description",
-                                     tableName: "AuthFoundation",
-                                     bundle: .authFoundation,
-                                     comment: "Invalid URL")
-            
+        case .missingResponse(request: let request):
+            if let requestUrl = request?.url {
+                return String.localizedStringWithFormat(
+                    NSLocalizedString("missing_response_request_description",
+                                      tableName: "AuthFoundation",
+                                      bundle: .authFoundation,
+                                      comment: "Invalid URL"),
+                    requestUrl.absoluteString)
+            } else {
+                return NSLocalizedString("missing_response_description",
+                                         tableName: "AuthFoundation",
+                                         bundle: .authFoundation,
+                                         comment: "Invalid URL")
+            }
+
         case .invalidResponse:
             return NSLocalizedString("invalid_response_description",
                                      tableName: "AuthFoundation",
@@ -71,7 +95,7 @@ extension APIClientError: LocalizedError {
             
         case .cannotParseResponse(error: let error):
             let errorString: String
-            if let error = error as? LocalizedError {
+            if let error = error as? any LocalizedError {
                 errorString = error.localizedDescription
             } else {
                 errorString = String(describing: error)
@@ -104,14 +128,14 @@ extension APIClientError: LocalizedError {
                                   comment: "Invalid URL"),
                 type.rawValue)
             
-        case .serverError(let error):
-            if let error = error as? LocalizedError {
+        case .httpError(let error):
+            if let error = error as? any LocalizedError {
                 return error.localizedDescription
             }
             let errorString = String(describing: error)
 
             return String.localizedStringWithFormat(
-                NSLocalizedString("server_error_description",
+                NSLocalizedString("http_error_description",
                                   tableName: "AuthFoundation",
                                   bundle: .authFoundation,
                                   comment: "Invalid URL"),
@@ -126,7 +150,7 @@ extension APIClientError: LocalizedError {
                 code)
 
         case .validation(error: let error):
-            if let error = error as? LocalizedError {
+            if let error = error as? any LocalizedError {
                 return error.localizedDescription
             }
 
@@ -167,7 +191,7 @@ extension APIClientError: Equatable {
         case (.cannotParseResponse(error: let lhsError), .cannotParseResponse(error: let rhsError)):
             return compare(lhs: lhsError as NSError, rhs: rhsError as NSError)
             
-        case (.serverError(let lhsError), .serverError(let rhsError)):
+        case (.httpError(let lhsError), .httpError(let rhsError)):
             return compare(lhs: lhsError as NSError, rhs: rhsError as NSError)
 
         case (.validation(error: let lhsError), .validation(error: let rhsError)):

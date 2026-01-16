@@ -11,6 +11,11 @@
 //
 
 import Foundation
+import AuthFoundation
+
+#if !COCOAPODS
+import JSON
+#endif
 
 extension WebAuthn {
     /**
@@ -18,7 +23,7 @@ extension WebAuthn {
      
      - Note: [W3C Reccomendation](https://www.w3.org/TR/webauthn/#dictionary-assertion-options)
      */
-    public struct PublicKeyCredentialRequestOptions: Codable {
+    public struct PublicKeyCredentialRequestOptions: Sendable, Codable, Equatable {
         /// This member specifies a challenge that the authenticator signs, along with other data, when producing an authentication assertion. See the § 13.4.3 Cryptographic Challenges security consideration.
         public let challenge: String
         
@@ -38,7 +43,7 @@ extension WebAuthn {
         public let hints: [PublicKeyCredentialHints]?
 
         /// The Relying Party MAY use this to provide client extension inputs requesting additional processing by the client and authenticator.
-        public let extensions: [String: Any?]?
+        public let extensions: [String: JSON]?
 
         enum CodingKeys: String, CodingKey {
             case allowCredentials
@@ -50,7 +55,8 @@ extension WebAuthn {
             case userVerification
         }
         
-        public init(from decoder: Decoder) throws {
+        @_documentation(visibility: internal)
+        public init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             
             allowCredentials = try container.decodeIfPresent([PublicKeyCredentialDescriptor].self, forKey: .allowCredentials)
@@ -65,26 +71,20 @@ extension WebAuthn {
                 timeout = nil
             }
 
-            if let jsonValues = try container.decodeIfPresent([String: JSONValue].self, forKey: .extensions) {
-                extensions = jsonValues.mapValues({ $0.anyValue })
-            } else {
-                extensions = nil
-            }
+            extensions = try container.decodeIfPresent([String: JSON].self, forKey: .extensions)
         }
         
-        public func encode(to encoder: Encoder) throws {
+        @_documentation(visibility: internal)
+        public func encode(to encoder: any Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(challenge, forKey: .challenge)
             try container.encodeIfPresent(allowCredentials, forKey: .allowCredentials)
             try container.encodeIfPresent(rpID, forKey: .rpID)
             try container.encodeIfPresent(hints, forKey: .hints)
-            
+            try container.encodeIfPresent(extensions, forKey: .extensions)
+
             if let timeout = timeout {
                 try container.encode(UInt64(timeout * 1000), forKey: .timeout)
-            }
-            
-            if let extensions = extensions {
-                try container.encode(try extensions.mapValues({ try JSONValue($0) }), forKey: .extensions)
             }
         }
     }

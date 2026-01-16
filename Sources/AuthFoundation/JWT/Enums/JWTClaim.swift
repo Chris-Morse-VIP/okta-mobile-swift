@@ -12,11 +12,8 @@
 
 import Foundation
 
-@available(*, deprecated, renamed: "JWTClaim")
-public typealias Claim = JWTClaim
-
 /// List of registered and public claims.
-public enum JWTClaim: Codable, IsClaim {
+public enum JWTClaim: Sendable, Codable, IsClaim {
     /// Issuer
     case issuer
 
@@ -277,7 +274,7 @@ public extension HasClaims where ClaimType == JWTClaim {
     /// The person's preferred username.
     var preferredUsername: String? { self[.preferredUsername] }
 
-#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
+#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS) || (swift(>=5.10) && os(visionOS))
     /// The person's name components, pre-assigned to a PersonNameComponents object.
     ///
     /// This property can be used as a convenience to generate a string representation of the user's name, based on the user's current locale.
@@ -355,7 +352,10 @@ public extension HasClaims where ClaimType == JWTClaim {
     }
     
     /// Returns the Authentication Context Class Reference for this token.
-    var authenticationClass: String? { self[.authContextClassReference] }
+    var authenticationClassReference: [String]? {
+        let value: String? = value(for: .authContextClassReference)
+        return value?.whitespaceSeparated
+    }
     
     /// The list of authentication methods included in this token, which defines the list of methods that were used to authenticate the user.
     ///
@@ -364,5 +364,7 @@ public extension HasClaims where ClaimType == JWTClaim {
     ///   // The user authenticated with an MFA factor.
     /// }
     /// ```
-    var authenticationMethods: [AuthenticationMethod]? { arrayValue(AuthenticationMethod.self, for: .authMethodsReference) }
+    var authenticationMethods: [AuthenticationMethod]? {
+        value(for: .authMethodsReference)
+    }
 }

@@ -12,7 +12,8 @@
 
 import SwiftUI
 import Combine
-import WebAuthenticationUI
+import BrowserSignin
+import AuthenticationServices
 
 enum AppSettings {
     enum SignInView {
@@ -22,10 +23,20 @@ enum AppSettings {
 }
 
 struct SignInView: View {
-    @StateObject private var viewModel = SignInViewModel()
     @Binding private var signedIn: Bool
-    @State private var cancellableSet: Set<AnyCancellable> = []
+    @State var ephemeralSession: Bool = false
+    @State var signInError: (any Error)?
+    @State var hasError: Bool = false
+    @State var clientId: String?
+    @State var state: SignInState = .unconfigured
     
+    enum SignInState: Sendable {
+        case unconfigured
+        case ready
+        case signingIn
+        case signedIn
+    }
+
     init(signedIn: Binding<Bool>) {
         self._signedIn = signedIn
     }
@@ -42,33 +53,62 @@ struct SignInView: View {
             Text("Have an account?")
             
             Button("Sign In") {
-                viewModel.signIn()
+                guard let auth = BrowserSignin.shared else { return }
+                state = .signingIn
+                auth.ephemeralSession = ephemeralSession
+                Task {
+                    do {
+                        let token = try await auth.signIn(from: ASPresentationAnchor())
+                        try Credential.store(token)
+                        signedIn = true
+                    } catch {
+                        signInError = error
+                        signedIn = false
+                    }
+                }
             }
-            .disabled(!viewModel.isConfigured)
-            .alert(isPresented: $viewModel.presentError) {
+            .disabled(state != .ready)
+            .alert(isPresented: $hasError) {
                 Alert(
                     title: Text("Error"),
-                    message: Text(viewModel.signInError?.localizedDescription ?? "An unknown error occurred")
+                    message: Text(signInError?.localizedDescription ?? "An unknown error occurred")
                 )
             }
             .padding()
             
-            Toggle("Ephemeral Session", isOn: $viewModel.ephemeralSession)
-            
+            Toggle("Ephemeral Session", isOn: $ephemeralSession)
+
             Spacer()
-            
-            Text(viewModel.isConfigured ? "Client ID: \(viewModel.clientID ?? "N/A")" : "Not configured")
-                .font(.caption)
-                .padding()
-        }.onAppear {
-            subscribe()
+
+            HStack {
+                Text("Client ID:")
+                Text(clientId ?? "Not configured")
+                    .font(.caption)
+                    .padding()
+            }
+            .onAppear {
+                if let configuration = BrowserSignin.shared?.signInFlow.client.configuration {
+                    clientId = configuration.clientId
+                    state = .ready
+                }
+            }
         }
     }
-    
-    func subscribe() {
-        viewModel.$signedIn
-            .sink { self.$signedIn.wrappedValue = $0 }
-            .store(in: &self.cancellableSet)
+
+    func signIn() async {
+        guard let auth = BrowserSignin.shared else { return }
+
+        auth.ephemeralSession = ephemeralSession
+        do {
+            let token = try await auth.signIn(from: ASPresentationAnchor())
+            try Credential.store(token)
+            signedIn = true
+            state = .signedIn
+        } catch {
+            signInError = error
+            signedIn = false
+            state = .ready
+        }
     }
 }
 
