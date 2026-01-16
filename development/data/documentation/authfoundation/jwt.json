@@ -401,7 +401,8 @@
         "doc:\/\/AuthFoundation\/documentation\/AuthFoundation\/JWT\/rawValue-swift.property",
         "doc:\/\/AuthFoundation\/documentation\/AuthFoundation\/JWT\/roles",
         "doc:\/\/AuthFoundation\/documentation\/AuthFoundation\/JWT\/scope",
-        "doc:\/\/AuthFoundation\/documentation\/AuthFoundation\/JWT\/signature"
+        "doc:\/\/AuthFoundation\/documentation\/AuthFoundation\/JWT\/signature",
+        "doc:\/\/AuthFoundation\/documentation\/AuthFoundation\/JWT\/userId"
       ],
       "title" : "Instance Properties"
     },
@@ -1980,6 +1981,47 @@
   "title" : "signature",
   "type" : "topic",
   "url" : "\/documentation\/authfoundation\/jwt\/signature"
+},
+"doc://AuthFoundation/documentation/AuthFoundation/JWT/userId": {
+  "abstract" : [
+    {
+      "text" : "VIP user ID for logged in user",
+      "type" : "text"
+    }
+  ],
+  "fragments" : [
+    {
+      "kind" : "keyword",
+      "text" : "var"
+    },
+    {
+      "kind" : "text",
+      "text" : " "
+    },
+    {
+      "kind" : "identifier",
+      "text" : "userId"
+    },
+    {
+      "kind" : "text",
+      "text" : ": "
+    },
+    {
+      "kind" : "typeIdentifier",
+      "preciseIdentifier" : "s:SS",
+      "text" : "String"
+    },
+    {
+      "kind" : "text",
+      "text" : "?"
+    }
+  ],
+  "identifier" : "doc:\/\/AuthFoundation\/documentation\/AuthFoundation\/JWT\/userId",
+  "kind" : "symbol",
+  "role" : "symbol",
+  "title" : "userId",
+  "type" : "topic",
+  "url" : "\/documentation\/authfoundation\/jwt\/userid"
 },
 "doc://AuthFoundation/documentation/AuthFoundation/JWT/validate(using:)": {
   "abstract" : [
