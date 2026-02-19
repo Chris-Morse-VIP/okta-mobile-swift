@@ -16,21 +16,21 @@ extension OAuth2Client.PropertyListConfigurationError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .defaultPropertyListNotFound:
-            return NSLocalizedString("plist_configuration.default_not_found",
+            return NSLocalizedString("default_property_list_not_found_description",
                                      tableName: "AuthFoundation",
                                      bundle: .authFoundation,
                                      comment: "")
             
         case .invalidPropertyList(url: let url):
             return String.localizedStringWithFormat(
-                NSLocalizedString("plist_configuration.invalid_property_list",
+                NSLocalizedString("invalid_property_list_description",
                                   tableName: "AuthFoundation",
                                   bundle: .authFoundation,
                                   comment: ""),
                 url.lastPathComponent)
 
         case .cannotParsePropertyList(let error):
-            if let error = error as? any LocalizedError {
+            if let error = error as? LocalizedError {
                 return error.localizedDescription
             }
             
@@ -38,27 +38,27 @@ extension OAuth2Client.PropertyListConfigurationError: LocalizedError {
             if let error = error {
                 errorString = String(describing: error)
             } else {
-                errorString = NSLocalizedString("plist_configuration.cannot_parse_generic_error",
+                errorString = NSLocalizedString("unknown_error_message",
                                                 tableName: "AuthFoundation",
                                                 bundle: .authFoundation,
                                                 comment: "")
             }
 
             return String.localizedStringWithFormat(
-                NSLocalizedString("plist_configuration.cannot_parse_message",
+                NSLocalizedString("generic_description",
                                   tableName: "AuthFoundation",
                                   bundle: .authFoundation,
                                   comment: ""),
                 errorString)
 
         case .missingConfigurationValues:
-            return NSLocalizedString("plist_configuration.missing_configuration_values",
+            return NSLocalizedString("missing_configuration_values_description",
                                      tableName: "AuthFoundation",
                                      bundle: .authFoundation,
                                      comment: "")
         case .invalidConfiguration(name: let name, value: let value):
             return String.localizedStringWithFormat(
-                NSLocalizedString("plist_configuration.invalid_configuration",
+                NSLocalizedString("invalid_configuration",
                                   tableName: "AuthFoundation",
                                   bundle: .authFoundation,
                                   comment: ""),

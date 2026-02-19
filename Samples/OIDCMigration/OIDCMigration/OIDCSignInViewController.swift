@@ -63,7 +63,7 @@ class OIDCSignInViewController: UIViewController {
         }
         
         if Credential.default == nil {
-            migrateButton.isEnabled = Migration.isMigrationNeeded
+            migrateButton.isEnabled = SDKVersion.isMigrationNeeded
             migrateButton.isHidden = false
             openUserProfileButton.isHidden = true
         } else {
@@ -122,7 +122,7 @@ class OIDCSignInViewController: UIViewController {
     
     @IBAction func migrateAction(_ sender: Any) {
         do {
-            try Migration.migrateIfNeeded()
+            try SDKVersion.migrateIfNeeded()
             self.updateUIState()
         } catch {
             show(error: error)

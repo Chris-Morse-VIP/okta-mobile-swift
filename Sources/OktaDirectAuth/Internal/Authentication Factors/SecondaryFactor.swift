@@ -16,41 +16,73 @@ import AuthFoundation
 extension DirectAuthenticationFlow.SecondaryFactor: AuthenticationFactor {
     func stepHandler(flow: DirectAuthenticationFlow,
                      openIdConfiguration: AuthFoundation.OpenIdConfiguration,
-                     loginHint: String? = nil) async throws -> any StepHandler
+                     loginHint: String? = nil,
+                     currentStatus: DirectAuthenticationFlow.Status?,
+                     factor: DirectAuthenticationFlow.SecondaryFactor) throws -> StepHandler
     {
-        guard let context = await flow._context else {
-            throw DirectAuthenticationFlowError.inconsistentContextState
+        var bindingContext: DirectAuthenticationFlow.BindingUpdateContext?
+        if case .bindingUpdate(let context) = currentStatus {
+            bindingContext = context
         }
-        
         switch self {
         case .otp:
             let request = TokenRequest(openIdConfiguration: openIdConfiguration,
                                        clientConfiguration: flow.client.configuration,
-                                       context: context,
+                                       currentStatus: currentStatus,
                                        loginHint: loginHint,
-                                       factor: self,
+                                       factor: factor,
                                        grantTypesSupported: flow.supportedGrantTypes)
             return TokenStepHandler(flow: flow, request: request)
         case .oob(channel: let channel):
             return try OOBStepHandler(flow: flow,
                                       openIdConfiguration: openIdConfiguration,
-                                      context: context,
+                                      currentStatus: currentStatus,
                                       loginHint: loginHint,
                                       channel: channel,
-                                      factor: self)
+                                      factor: factor,
+                                      bindingContext: bindingContext)
         case .webAuthn:
-            let mfaContext = context.currentStatus?.mfaContext
+            let mfaContext = currentStatus?.mfaContext
             let request = try WebAuthnChallengeRequest(openIdConfiguration: openIdConfiguration,
                                                        clientConfiguration: flow.client.configuration,
-                                                       context: context,
                                                        loginHint: loginHint,
                                                        mfaToken: mfaContext?.mfaToken)
             return ChallengeStepHandler(flow: flow, request: request) {
-                .continuation(.webAuthn(.init(request: $0, mfaContext: mfaContext)))
+                .webAuthn(.init(request: $0,
+                                mfaContext: mfaContext))
             }
+        case .webAuthnAssertion(let response):
+            let request = TokenRequest(openIdConfiguration: openIdConfiguration,
+                                       clientConfiguration: flow.client.configuration,
+                                       currentStatus: currentStatus,
+                                       loginHint: loginHint,
+                                       factor: factor,
+                                       parameters: response,
+                                       grantTypesSupported: flow.supportedGrantTypes)
+            return TokenStepHandler(flow: flow, request: request)
         }
     }
     
+    func tokenParameters(currentStatus: DirectAuthenticationFlow.Status?) -> [String: String] {
+        var result: [String: String] = [
+            "grant_type": grantType(currentStatus: currentStatus).rawValue,
+        ]
+        
+        if let context = currentStatus?.mfaContext {
+            result["mfa_token"] = context.mfaToken
+        }
+
+        switch self {
+        case .otp(code: let code):
+            result["otp"] = code
+        case .webAuthnAssertion(_): break
+        case .oob(channel: _): break
+        case .webAuthn: break
+        }
+
+        return result
+    }
+
     func grantType(currentStatus: DirectAuthenticationFlow.Status?) -> GrantType {
         let hasMFAToken = (currentStatus?.mfaContext?.mfaToken != nil)
 
@@ -63,30 +95,12 @@ extension DirectAuthenticationFlow.SecondaryFactor: AuthenticationFactor {
             } else {
                 return .oob
             }
-        case .webAuthn:
+        case .webAuthn, .webAuthnAssertion(_):
             if hasMFAToken {
                 return .webAuthnMFA
             } else {
                 return .webAuthn
             }
         }
-    }
-}
-
-extension DirectAuthenticationFlow.SecondaryFactor: HasTokenParameters {
-    func tokenParameters(currentStatus: DirectAuthenticationFlow.Status?) -> [String: any APIRequestArgument] {
-        var result: [String: any APIRequestArgument] = [
-            "grant_type": grantType(currentStatus: currentStatus),
-        ]
-        
-        if let context = currentStatus?.mfaContext {
-            result["mfa_token"] = context.mfaToken
-        }
-
-        if case let .otp(code: code) = self {
-            result["otp"] = code
-        }
-
-        return result
     }
 }

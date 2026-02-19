@@ -16,138 +16,88 @@ extension OAuth2Client {
     /// The configuration for an ``OAuth2Client``.
     ///
     /// This defines the basic information necessary for interacting with an OAuth2 authorization server.
-    public struct Configuration: Sendable, Codable, Equatable, Hashable, ProvidesOAuth2Parameters {
+    public final class Configuration: Codable, Equatable, Hashable, APIClientConfiguration {
         /// The base URL for interactions with this OAuth2 server.
-        public var issuerURL: URL
+        public let baseURL: URL
         
         /// The discovery URL used to retrieve the ``OpenIdConfiguration`` for this client.
-        public var discoveryURL: URL
+        public let discoveryURL: URL
         
         /// The unique client ID representing this ``OAuth2Client``.
-        public var clientId: String
+        public let clientId: String
         
         /// The list of OAuth2 scopes requested for this client.
-        @ClaimCollection
-        public var scope: [String]
+        public let scopes: String
         
-        /// The Redirect URI, if this client configuration requires it.
-        public var redirectUri: URL?
-        
-        /// The Logout Redirect URI, if this client configuration requires it.
-        public var logoutRedirectUri: URL?
-
         /// The type of authentication this client will perform when interacting with the authorization server.
-        public var authentication: ClientAuthentication
+        public let authentication: ClientAuthentication
         
         /// Initializer for constructing an OAuth2Client.
         /// - Parameters:
-        ///   - issuerURL: Issuer URL for this client configuration.
+        ///   - baseURL: Base URL.
         ///   - discoveryURL: Discovery URL, or `nil` to accept the default OpenIDConfiguration endpoint.
         ///   - clientId: The client ID.
-        ///   - scope: The list of OAuth2 scopes.
-        ///   - redirectUri: Optional `redirect_uri` value for this client.
-        ///   - logoutRedirectUri: Optional `logout_redirect_uri` value for this client.
-        ///   - authentication: The client authentication  model to use (Default: ``OAuth2Client/ClientAuthentication/none``)
-        public init(issuerURL: URL,
+        ///   - scopes: The list of OAuth2 scopes.
+        ///   - authentication: The client authentication  model to use (Default: `.none`)
+        public init(baseURL: URL,
                     discoveryURL: URL? = nil,
                     clientId: String,
-                    scope: ClaimCollection<[String]>,
-                    redirectUri: URL? = nil,
-                    logoutRedirectUri: URL? = nil,
+                    scopes: String,
                     authentication: ClientAuthentication = .none)
         {
-            self.issuerURL = issuerURL
-            self.discoveryURL = discoveryURL ?? issuerURL.appendingDiscoveryURL
+            var relativeURL = baseURL
+            
+            // Ensure the base URL contains a trailing slash in its path, so request paths can be safely appended.
+            if !relativeURL.lastPathComponent.isEmpty {
+                relativeURL.appendPathComponent("")
+            }
+            
+            self.baseURL = baseURL
+            self.discoveryURL = discoveryURL ?? relativeURL.appendingPathComponent(".well-known/openid-configuration")
             self.clientId = clientId
-            self._scope = scope
-            self.redirectUri = redirectUri
-            self.logoutRedirectUri = logoutRedirectUri
+            self.scopes = scopes
             self.authentication = authentication
         }
         
-        @_documentation(visibility: private)
-        public func parameters(for category: OAuth2APIRequestCategory) -> [String: any APIRequestArgument]? {
-            var result = authentication.parameters(for: category) ?? [:]
-            
-            switch category {
-            case .authorization, .token:
-                result["scope"] = scope
-                result["client_id"] = clientId
-                result["redirect_uri"] = redirectUri
-            case .configuration, .resource, .other: break
+        /// Convenience initializer to create a client using a simple domain name.
+        /// - Parameters:
+        ///   - domain: Domain name for the OAuth2 client.
+        ///   - clientId: The client ID.
+        ///   - scopes: The list of OAuth2 scopes.
+        ///   - authentication: The client authentication  model to use (Default: `.none`)
+        public convenience init(domain: String,
+                                clientId: String,
+                                scopes: String,
+                                authentication: ClientAuthentication = .none) throws
+        {
+            guard let url = URL(string: "https://\(domain)") else {
+                throw OAuth2Error.invalidUrl
             }
             
-            return result.compactMapValues { $0 }
-        }
-    }
-}
-
-fileprivate extension OAuth2Client.Configuration {
-    enum CodingKeysV1: String, CodingKey, CaseIterable {
-        case baseURL
-        case discoveryURL
-        case clientId
-        case scopes
-        case authentication
-    }
-
-    enum CodingKeysV2: String, CodingKey, CaseIterable {
-        case issuerURL
-        case discoveryURL
-        case redirectUri
-        case logoutRedirectUri
-        case clientId
-        case scope
-        case authentication
-    }
-}
-
-extension OAuth2Client.Configuration {
-    @_documentation(visibility: private)
-    public init(from decoder: any Decoder) throws {
-        if let container = try? decoder.container(keyedBy: CodingKeysV1.self),
-           container.allKeys.contains(.baseURL)
-        {
-            let scope = try container.decode(String.self, forKey: .scopes)
-            self.init(issuerURL: try container.decode(URL.self, forKey: .baseURL),
-                      discoveryURL: try container.decodeIfPresent(URL.self, forKey: .discoveryURL),
-                      clientId: try container.decode(String.self, forKey: .clientId),
-                      scope: scope.whitespaceSeparated,
-                      authentication: try container.decodeIfPresent(OAuth2Client.ClientAuthentication.self, forKey: .authentication) ?? .none)
-        }
-
-        else if let container = try? decoder.container(keyedBy: CodingKeysV2.self) {
-            let scope = try container.decode(String.self, forKey: .scope)
-            self.init(issuerURL: try container.decode(URL.self, forKey: .issuerURL),
-                      discoveryURL: try container.decodeIfPresent(URL.self, forKey: .discoveryURL),
-                      clientId: try container.decode(String.self, forKey: .clientId),
-                      scope: scope.whitespaceSeparated,
-                      redirectUri: try container.decodeIfPresent(URL.self, forKey: .redirectUri),
-                      logoutRedirectUri: try container.decodeIfPresent(URL.self, forKey: .logoutRedirectUri),
-                      authentication: try container.decodeIfPresent(OAuth2Client.ClientAuthentication.self, forKey: .authentication) ?? .none)
+            self.init(baseURL: url, clientId: clientId, scopes: scopes, authentication: authentication)
         }
         
-        else {
-            throw DecodingError.dataCorrupted(
-                DecodingError.Context(codingPath: decoder.codingPath,
-                                      debugDescription: "Unsupported OAuth 2.0 configuration version"))
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.baseURL = try container.decode(URL.self, forKey: .baseURL)
+            self.discoveryURL = try container.decode(URL.self, forKey: .discoveryURL)
+            self.clientId = try container.decode(String.self, forKey: .clientId)
+            self.scopes = try container.decode(String.self, forKey: .scopes)
+            self.authentication = try container.decodeIfPresent(OAuth2Client.ClientAuthentication.self, forKey: .authentication) ?? .none
+        }
+        
+        public static func == (lhs: OAuth2Client.Configuration, rhs: OAuth2Client.Configuration) -> Bool {
+            lhs.baseURL == rhs.baseURL &&
+            lhs.clientId == rhs.clientId &&
+            lhs.scopes == rhs.scopes &&
+            lhs.authentication == rhs.authentication
+        }
+        
+        public func hash(into hasher: inout Hasher) {
+            hasher.combine(baseURL)
+            hasher.combine(clientId)
+            hasher.combine(scopes)
+            hasher.combine(authentication)
         }
     }
-    
-    @_documentation(visibility: private)
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeysV2.self)
-        try container.encode(issuerURL, forKey: .issuerURL)
-        try container.encode(discoveryURL, forKey: .discoveryURL)
-        try container.encode(clientId, forKey: .clientId)
-        try container.encode($scope.rawValue, forKey: .scope)
-        try container.encodeIfPresent(redirectUri, forKey: .redirectUri)
-        try container.encodeIfPresent(logoutRedirectUri, forKey: .logoutRedirectUri)
-        try container.encode(authentication, forKey: .authentication)
-    }
-}
-
-extension OAuth2Client.Configuration: APIClientConfiguration {
-    @_documentation(visibility: private)
-    public var baseURL: URL { issuerURL }
 }

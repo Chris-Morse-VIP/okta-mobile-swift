@@ -10,7 +10,7 @@
 // See the License for the specific language governing permissions and limitations under the License.
 //
 
-#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS) || (swift(>=5.10) && os(visionOS))
+#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
 
 import Foundation
 
@@ -34,29 +34,6 @@ protocol KeychainDeletable: KeychainQuery {
     var deleteQuery: [String: Any] { get }
 }
 
-// According to Apple's documentation, calls to SecItemDelete cannot include return result keys,
-// since only a status result is supported.
-// https://developer.apple.com/documentation/security/secitemdelete(_:)#Discussion
-//
-// As such, these keys list the list of keys unsupported in delete requests:
-// https://developer.apple.com/documentation/security/item-return-result-keys
-fileprivate let _invalidDeleteQueryKeys = [
-    kSecReturnData,
-    kSecReturnAttributes,
-    kSecReturnRef,
-    kSecReturnPersistentRef,
-].map { $0 as String }
-
-extension Keychain {
-    static let compositePrimaryKeyAttributes: [String] = [
-        kSecClass as String,
-        kSecAttrAccessGroup as String,
-        kSecAttrAccount as String,
-        kSecAttrService as String,
-        kSecAttrSynchronizable as String,
-    ]
-}
-
 extension KeychainGettable {
     var getQuery: [String: Any] {
         var result = self.query
@@ -65,7 +42,7 @@ extension KeychainGettable {
         return result
     }
 
-    func performGet(prompt: String?, authenticationContext: (any KeychainAuthenticationContext)?) throws -> Keychain.Item {
+    func performGet(prompt: String?, authenticationContext: KeychainAuthenticationContext?) throws -> Keychain.Item {
         var cfQuery = self.getQuery
         if let prompt = prompt {
             cfQuery[kSecUseOperationPrompt as String] = prompt
@@ -76,11 +53,8 @@ extension KeychainGettable {
         }
 
         var ref: AnyObject?
-        let status = Keychain
-            .implementation
-            .wrappedValue
-            .copyItemMatching(cfQuery as CFDictionary, &ref)
-
+        
+        let status = Keychain.implementation.copyItemMatching(cfQuery as CFDictionary, &ref)
         guard status == noErr else {
             if status == errSecItemNotFound {
                 throw KeychainError.notFound
@@ -108,11 +82,8 @@ extension KeychainListable {
     func performList() throws -> [Keychain.Search.Result] {
         let cfQuery = self.listQuery as CFDictionary
         var ref: CFTypeRef?
-        let status = Keychain
-            .implementation
-            .wrappedValue
-            .copyItemMatching(cfQuery, &ref)
-
+        let status = Keychain.implementation.copyItemMatching(cfQuery, &ref)
+        
         guard status != errSecItemNotFound else {
             return []
         }
@@ -146,7 +117,7 @@ extension KeychainUpdatable {
         }
     }
 
-    func performUpdate(_ item: Keychain.Item, authenticationContext: (any KeychainAuthenticationContext)?) throws {
+    func performUpdate(_ item: Keychain.Item, authenticationContext: KeychainAuthenticationContext?) throws {
         let updateSearchQuery = self.updateQuery
 
         var saveQuery = item.query
@@ -156,11 +127,7 @@ extension KeychainUpdatable {
             saveQuery[kSecUseAuthenticationContext as String] = authenticationContext
         }
 
-        let status = Keychain
-            .implementation
-            .wrappedValue
-            .updateItem(updateSearchQuery as CFDictionary, saveQuery as CFDictionary)
-
+        let status = Keychain.implementation.updateItem(updateSearchQuery as CFDictionary, saveQuery as CFDictionary)
         if status == errSecItemNotFound {
             throw KeychainError.notFound
         } else if status != noErr {
@@ -171,15 +138,16 @@ extension KeychainUpdatable {
 
 extension KeychainDeletable {
     var deleteQuery: [String: Any] {
-        query.filter { !_invalidDeleteQueryKeys.contains($0.key) }
+        var cfQuery = self.query
+        cfQuery.removeValue(forKey: kSecMatchLimit as String)
+        cfQuery.removeValue(forKey: kSecReturnAttributes as String)
+        cfQuery.removeValue(forKey: kSecReturnRef as String)
+        
+        return cfQuery
     }
 
     func performDelete() throws {
-        let status = Keychain
-            .implementation
-            .wrappedValue
-            .deleteItem(deleteQuery as CFDictionary)
-
+        let status = Keychain.implementation.deleteItem(deleteQuery as CFDictionary)
         if status == errSecItemNotFound {
             throw KeychainError.notFound
         } else if status != noErr {
@@ -194,27 +162,27 @@ extension Keychain.Item: KeychainUpdatable, KeychainDeletable {
         result[kSecClass as String] = kSecClassGenericPassword
         result[kSecAttrAccount as String] = account
         result[kSecValueData as String] = value
-
+        
         if let accessibility = accessibility {
             result[kSecAttrAccessible as String] = accessibility.rawValue
         }
-
+        
         if #available(iOS 13.0, macCatalyst 13.0, macOS 10.15, tvOS 13.0, watchOS 6.0, *) {
             result[kSecUseDataProtectionKeychain as String] = kCFBooleanTrue
         }
-
+        
         if let service = service {
             result[kSecAttrService as String] = service
         }
-
+        
         if let server = server {
             result[kSecAttrServer as String] = server
         }
-
+        
         if let accessGroup = accessGroup {
             result[kSecAttrAccessGroup as String] = accessGroup
         }
-
+        
         if let synchronizable = synchronizable {
             result[kSecAttrSynchronizable as String] = synchronizable ? kCFBooleanTrue : kCFBooleanFalse
         }
@@ -222,15 +190,15 @@ extension Keychain.Item: KeychainUpdatable, KeychainDeletable {
         if let label = label {
             result[kSecAttrLabel as String] = label
         }
-
+        
         if let description = description {
             result[kSecAttrDescription as String] = description
         }
-
+        
         if let generic = generic {
             result[kSecAttrGeneric as String] = generic
         }
-
+        
         return result
     }
 }
@@ -283,9 +251,6 @@ extension Keychain.Search.Result: KeychainGettable, KeychainUpdatable, KeychainD
     }
 }
 
-nonisolated(unsafe) fileprivate let _kSecAttrAccessibleAlways = "dk" as CFString
-nonisolated(unsafe) fileprivate let _kSecAttrAccessibleAlwaysThisDeviceOnly = "dku" as CFString
-
 extension Keychain.Accessibility: RawRepresentable {
     public typealias RawValue = String
     
@@ -302,9 +267,9 @@ extension Keychain.Accessibility: RawRepresentable {
             self = .afterFirstUnlock
         case kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly:
             self = .afterFirstUnlockThisDeviceOnly
-        case _kSecAttrAccessibleAlways:
+        case kSecAttrAccessibleAlways:
             self = .always
-        case _kSecAttrAccessibleAlwaysThisDeviceOnly:
+        case kSecAttrAccessibleAlwaysThisDeviceOnly:
             self = .alwaysThisDeviceOnly
         default:
             return nil
@@ -324,9 +289,9 @@ extension Keychain.Accessibility: RawRepresentable {
         case .afterFirstUnlockThisDeviceOnly:
             return kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String
         case .always:
-            return _kSecAttrAccessibleAlways as String
+            return kSecAttrAccessibleAlways as String
         case .alwaysThisDeviceOnly:
-            return _kSecAttrAccessibleAlwaysThisDeviceOnly as String
+            return kSecAttrAccessibleAlwaysThisDeviceOnly as String
         }
     }
 }

@@ -16,49 +16,25 @@ import XCTest
 protocol Screen {
     var app: XCUIApplication { get }
     var testCase: XCTestCase { get }
-
-    var nextScreenButton: XCUIElement? { get }
-
-    @discardableResult
-    func dismissKeyboard() -> Bool
-
-    @discardableResult
-    func tapKeyboardNextOrGo() -> Bool
-}
-
-fileprivate enum WebViewNextButtonLabels: String, CaseIterable {
-    case go = "Go"
-    case next = "Next"
-    case verify = "Verify"
+    
+    func dismissKeyboard()
+    func tapKeyboardNextOrGo()
 }
 
 extension Screen {
-    var nextScreenButton: XCUIElement? {
-        for buttonLabel in WebViewNextButtonLabels.allCases {
-            let nextScreenButton = app.webViews.buttons[buttonLabel.rawValue]
-            if nextScreenButton.exists {
-                return nextScreenButton
-            }
-        }
-        return nil
-    }
-
-    @discardableResult
-    func tapKeyboardNextOrGo() -> Bool {
-        #if !os(tvOS)
-        if let submitButton = app.keyboardSubmitButton {
-            submitButton.tap()
-            return true
-        } else if let nextButton = nextScreenButton {
-            nextButton.tap()
-            return true
+    func tapKeyboardNextOrGo() {
+        #if os(iOS)
+        if app.keyboards.buttons["Next"].exists {
+            app.keyboards.buttons["Next"].tap()
+        } else if app.keyboards.buttons["Go"].exists {
+            app.keyboards.buttons["Go"].tap()
+        } else {
+            dismissKeyboard()
         }
         #endif
-        return false
     }
     
-    @discardableResult
-    func dismissKeyboard() -> Bool {
+    func dismissKeyboard() {
         #if os(tvOS)
         // TODO: Update this in the future to select the appropriately named button.
         XCUIRemote.shared.press(.select)
@@ -67,16 +43,12 @@ extension Screen {
         if app.keyboards.element(boundBy: 0).exists {
             if UIDevice.current.userInterfaceIdiom == .pad {
                 app.keyboards.buttons["Hide keyboard"].tap()
-                return true
             } else {
                 app.toolbars.buttons["Done"].tap()
-                return true
             }
         } else if doneButton.exists {
             doneButton.tap()
-            return true
         }
         #endif
-        return false
     }
 }

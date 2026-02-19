@@ -25,7 +25,7 @@ final class JWTTests: XCTestCase {
         XCTAssertEqual(token[.userId], "00u2q5p3AAAOXoSc04w5")
         XCTAssertEqual(token[.clientId], "0oa3en4fAAA3ddc204w5")
         XCTAssertEqual(token.issuer, "https://example.com/oauth2/default")
-        XCTAssertEqual(token.audience, "api://default")
+        XCTAssertNil(token.audience)
         XCTAssertEqual(token.expirationTime?.timeIntervalSinceReferenceDate, 664228962.0)
         XCTAssertEqual(token.issuedAt?.timeIntervalSinceReferenceDate, 664225362.0)
         XCTAssertNil(token.notBefore)
@@ -65,13 +65,11 @@ final class JWTTests: XCTestCase {
             "scp": ["offline_access", "profile", "openid"]
         ])
 
-        XCTAssertEqual(token.payload.reduce(into: [String: Int](), { partialResult, item in
-            guard let value = item.value as? Int else { return }
+        XCTAssertEqual(token.payload.reduce(into: [String:Bool](), { partialResult, item in
+            guard let value = item.value as? Bool else { return }
             partialResult[item.key] = value
         }), [
-            "exp": 1642536162,
-            "iat": 1642532562,
-            "ver": 1
+            "ver": true
         ])
     }
 

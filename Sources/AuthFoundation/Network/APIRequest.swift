@@ -12,13 +12,13 @@
 
 import Foundation
 
-#if canImport(FoundationNetworking)
+#if os(Linux)
 import FoundationNetworking
 #endif
 
 /// Abstract protocol defining the structure of an API request.
-public protocol APIRequest: Sendable {
-    associatedtype ResponseType: Decodable & Sendable
+public protocol APIRequest {
+    associatedtype ResponseType: Decodable
     
     /// HTTP method to perform.
     var httpMethod: APIRequestMethod { get }
@@ -27,10 +27,10 @@ public protocol APIRequest: Sendable {
     var url: URL { get }
     
     /// Optional query string arguments.
-    var query: [String: (any APIRequestArgument)?]? { get }
+    var query: [String: APIRequestArgument?]? { get }
     
     /// Optional HTTP headers to supply.
-    var headers: [String: (any APIRequestArgument)?]? { get }
+    var headers: [String: APIRequestArgument?]? { get }
     
     /// Optional accept type to request.
     var acceptsType: APIContentType? { get }
@@ -45,7 +45,7 @@ public protocol APIRequest: Sendable {
     var timeoutInterval: TimeInterval { get }
     
     /// Optional API authorization information to use.
-    var authorization: (any APIAuthorization)? { get }
+    var authorization: APIAuthorization? { get }
     
     /// Function to generate the HTTP request body.
     /// - Returns: Data for the body, or `nil` if no body is needed.
@@ -54,18 +54,28 @@ public protocol APIRequest: Sendable {
     /// Composes a URLRequest for this object.
     /// - Parameter client: The ``APIClient`` the request is being sent through.
     /// - Returns: URLRequest instance for this API request.
-    func request(for client: any APIClient) throws -> URLRequest
+    func request(for client: APIClient) throws -> URLRequest
     
+    /// Sends the request to the given ``APIClient``.
+    /// - Parameters:
+    ///   - client: ``APIClient`` the request is being sent to.
+    ///   - context: Optional context to use when parsing the response.
+    ///   - completion: Completion block invoked with the result.
+    func send(to client: APIClient, parsing context: APIParsingContext?, completion: @escaping(Result<APIResponse<ResponseType>, APIClientError>) -> Void)
+
+    #if swift(>=5.5.1)
     /// Asynchronously sends the request to the given ``APIClient``.
     /// - Parameters:
     ///   - client: ``APIClient`` the request is being sent to.
     ///   - context: Optional context to use when parsing the response.
     /// - Returns: ``APIResponse`` result of the request.
-    func send(to client: any APIClient, parsing context: (any APIParsingContext)?) async throws -> APIResponse<ResponseType>
+    @available(iOS 13.0, tvOS 13.0, macOS 10.15, watchOS 6, *)
+    func send(to client: APIClient, parsing context: APIParsingContext?) async throws -> APIResponse<ResponseType>
+    #endif
 }
 
 /// API HTTP request method.
-public enum APIRequestMethod: String, Hashable, Equatable, Codable, Sendable {
+public enum APIRequestMethod: String {
     case get = "GET"
     case delete = "DELETE"
     case head = "HEAD"
@@ -75,7 +85,7 @@ public enum APIRequestMethod: String, Hashable, Equatable, Codable, Sendable {
 }
 
 /// Describes the ``APIRequest`` content type.
-public enum APIContentType: Sendable, Hashable, Equatable, Codable, RawRepresentable {
+public enum APIContentType: Equatable, RawRepresentable {
     case json
     case formEncoded
     case other(_ type: String)
@@ -118,11 +128,11 @@ public protocol APIAuthorization {
 /// Defines key/value pairs for an ``APIRequest`` body.
 public protocol APIRequestBody {
     /// Key/value pairs to use when generating an ``APIRequest`` body.
-    var bodyParameters: [String: any APIRequestArgument]? { get }
+    var bodyParameters: [String: Any]? { get }
 }
 
 /// Provides contextual information when parsing and decoding ``APIRequest`` responses, or errors.
-public protocol APIParsingContext: Sendable {
+public protocol APIParsingContext {
     /// Optional coding user info to use when parsing ``APIRequest`` responses.
     var codingUserInfo: [CodingUserInfoKey: Any]? { get }
     
@@ -136,26 +146,11 @@ public protocol APIParsingContext: Sendable {
     /// Generates an error response from an ``APIRequest`` result when an HTTP error occurs.
     /// - Parameter data: Raw data returned from the HTTP response.
     /// - Returns: Optional error option described within the supplied data.
-    func error(from data: Data) -> (any Error)?
+    func error(from data: Data) -> Error?
 }
 
 extension APIParsingContext {
-    @_documentation(visibility: private)
-    public var codingUserInfo: [CodingUserInfoKey: Any]? {
-        if let flowRequest = self as? any AuthenticationFlowRequest,
-           let persistValues = flowRequest.context.persistValues,
-           !persistValues.isEmpty
-        {
-            return [ .clientSettings: persistValues ]
-        }
-        
-        return nil
-    }
-
-    @_documentation(visibility: private)
-    public func error(from data: Data) -> (any Error)? { nil }
-
-    @_documentation(visibility: private)
+    public func error(from data: Data) -> Error? { nil }
     public func resultType(from response: HTTPURLResponse) -> APIResponseResult {
         APIResponseResult(statusCode: response.statusCode)
     }
@@ -163,7 +158,7 @@ extension APIParsingContext {
 
 extension APIRequest where Self: APIRequestBody {
     public func body() throws -> Data? {
-        try contentType?.encodedData(with: bodyParameters?.stringComponents)
+        try contentType?.encodedData(with: bodyParameters)
     }
 }
 
@@ -183,16 +178,16 @@ extension APIRequest where Self: Encodable {
 
 extension APIRequest {
     public var httpMethod: APIRequestMethod { .get }
-    public var query: [String: (any APIRequestArgument)?]? { nil }
-    public var headers: [String: (any APIRequestArgument)?]? { nil }
+    public var query: [String: APIRequestArgument?]? { nil }
+    public var headers: [String: APIRequestArgument?]? { nil }
     public var acceptsType: APIContentType? { nil }
     public var contentType: APIContentType? { nil }
     public var cachePolicy: URLRequest.CachePolicy { .reloadIgnoringLocalAndRemoteCacheData }
     public var timeoutInterval: TimeInterval { 60 }
-    public var authorization: (any APIAuthorization)? { nil }
+    public var authorization: APIAuthorization? { nil }
 
     public func body() throws -> Data? { nil }
-    public func request(for client: any APIClient) throws -> URLRequest {
+    public func request(for client: APIClient) throws -> URLRequest {
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: true)
         else {
             throw APIClientError.invalidUrl
@@ -236,10 +231,27 @@ extension APIRequest {
         return request
     }
     
-    public func send(to client: any APIClient, parsing context: (any APIParsingContext)? = nil) async throws -> APIResponse<ResponseType> {
-        try await client.send(try request(for: client),
-                              parsing: context ?? self as? (any APIParsingContext))
+    public func send(to client: APIClient, parsing context: APIParsingContext? = nil, completion: @escaping(Result<APIResponse<ResponseType>, APIClientError>) -> Void) {
+        do {
+            let urlRequest = try request(for: client)
+            client.send(urlRequest,
+                        parsing: context ?? self as? APIParsingContext,
+                        completion: completion)
+        } catch {
+            completion(.failure(.serverError(error)))
+        }
     }
+    
+    #if swift(>=5.5.1)
+    @available(iOS 13.0, tvOS 13.0, macOS 10.15, watchOS 6, *)
+    public func send(to client: APIClient, parsing context: APIParsingContext? = nil) async throws -> APIResponse<ResponseType> {
+        try await withCheckedThrowingContinuation { continuation in
+            send(to: client, parsing: context) { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+    #endif
 }
 
 extension APIContentType {
@@ -254,14 +266,14 @@ extension APIContentType {
         }
     }
     
-    func encodedData(with parameters: [String: any Sendable]?) throws -> Data? {
+    func encodedData(with parameters: [String: Any]?) throws -> Data? {
         guard let parameters = parameters else {
             return nil
         }
 
         switch self.underlyingType {
         case .formEncoded:
-            guard let parameters = parameters as? [String: any APIRequestArgument] else {
+            guard let parameters = parameters as? [String: APIRequestArgument] else {
                 throw APIClientError.invalidRequestData
             }
             return URLRequest.oktaURLFormEncodedString(for: parameters)?.data(using: .utf8)

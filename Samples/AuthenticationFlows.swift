@@ -11,7 +11,7 @@
 //
 
 import UIKit
-import BrowserSignin
+import WebAuthenticationUI
 
 let issuer = "https://<#domain#>"
 let clientId = "<#clientId#>"
@@ -19,7 +19,7 @@ let redirectUri = "<#redirectUri#>"
 
 func signInWithWeb() async throws {
     // Sign in using the default configuration
-    let token = try await BrowserSignin.shared?.signIn(from: view.window)
+    let token = try await WebAuthentication.shared?.signIn(from: view.window)
     
     // Save the user's tokens
     try Credential.store(token)
@@ -32,10 +32,10 @@ func signInWithWebUsingCustomConfiguration() async throws {
         throw SampleError.invalidUrl
     }
     
-    let auth = BrowserSignin(issuerURL: issuerUrl,
-                             clientId: clientId,
-                             scope: "openid profile email offline_access device_sso",
-                             redirectUri: redirectUrl)
+    let auth = WebAuthentication(issuer: issuerUrl,
+                                 clientId: clientId,
+                                 scopes: "openid profile email offline_access device_sso",
+                                 redirectUri: redirectUrl)
     
     // Sign in using the above configuration
     let token = try await auth.signIn(from: view.window)
@@ -51,9 +51,9 @@ func signInUsingAuthorizationCode() async throws {
         throw SampleError.invalidUrl
     }
     
-    let flow = AuthorizationCodeFlow(issuerURL: issuerUrl,
+    let flow = AuthorizationCodeFlow(issuer: issuerUrl,
                                      clientId: clientId,
-                                     scope: "openid profile email offline_access",
+                                     scopes: "openid profile email offline_access",
                                      redirectUri: redirectUrl)
 
     // Initiate the auth flow, and get the URL to present to the user
@@ -74,9 +74,9 @@ func signInUsingResourceOwner(username: String, password: String) async throws {
         throw SampleError.invalidUrl
     }
     
-    let flow = ResourceOwnerFlow(issuerURL: issuerUrl,
+    let flow = ResourceOwnerFlow(issuer: issuerUrl,
                                  clientId: clientId,
-                                 scope: "openid profile email offline_access")
+                                 scopes: "openid profile email offline_access")
     
     // Sign in using a username & password
     let token = try await flow.start(username: username, password: password)
@@ -91,9 +91,9 @@ func signInUsingDeviceSSO(deviceToken: String, idToken: String) async throws {
     }
     
     // Create the flow
-    let flow = TokenExchangeFlow(issuerURL: issuerUrl,
+    let flow = TokenExchangeFlow(issuer: issuerUrl,
                                  clientId: clientId,
-                                 scope: "openid profile offline_access",
+                                 scopes: "openid profile offline_access",
                                  audience: .default)
     
     // Exchange the ID and Device tokens for access tokens.

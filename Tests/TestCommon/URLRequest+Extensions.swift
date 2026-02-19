@@ -12,10 +12,6 @@
 
 import Foundation
 
-#if canImport(FoundationNetworking)
-import FoundationNetworking
-#endif
-
 extension URLRequest {
     var bodyString: String? {
         guard let body = httpBody else { return nil }

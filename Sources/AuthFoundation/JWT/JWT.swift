@@ -12,12 +12,8 @@
 
 import Foundation
 
-#if !COCOAPODS
-@_exported import JSON
-#endif
-
 /// Represents the contents of a JWT token, providing access to its payload contents.
-public struct JWT: RawRepresentable, Sendable, Codable, HasClaims, Expires {
+public struct JWT: RawRepresentable, Codable, HasClaims, Expires {
     public typealias ClaimType = JWTClaim
     public typealias RawValue = String
     
@@ -31,12 +27,11 @@ public struct JWT: RawRepresentable, Sendable, Codable, HasClaims, Expires {
     public var issuer: String? { self[.issuer] }
     
     /// The intended audience for this token.
-    public var audience: String? { self[.audience] }
+    public var audience: [String]? { self[.audience] }
     
     /// The date this token was issued.
     public var issuedAt: Date? { self[.issuedAt] }
     
-    /// The date before which this token should not yet beconsidered valid.
     public var notBefore: Date? { self[.notBefore] }
     
     /// The time interval in which the token will expire.
@@ -45,7 +40,7 @@ public struct JWT: RawRepresentable, Sendable, Codable, HasClaims, Expires {
     /// The array of scopes this token is valid for.
     public var scope: [String]? { self[.scope] ?? self["scp"] }
 
-    /// VIP roles for application access
+    // VIP Roles for application access
     public var roles: [String]? { self[.roles] }
 
     /// VIP user ID for logged in user
@@ -57,7 +52,7 @@ public struct JWT: RawRepresentable, Sendable, Codable, HasClaims, Expires {
     public var authenticationContext: String? { self[.authContextClassReference] }
     
     /// JWT header information describing the contents of the token.
-    public struct Header: Sendable, Decodable {
+    public struct Header: Decodable {
         /// The ID of the key used to sign this JWT token.
         public let keyId: String
 
@@ -68,6 +63,12 @@ public struct JWT: RawRepresentable, Sendable, Codable, HasClaims, Expires {
             case keyId = "kid"
             case algorithm = "alg"
         }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            keyId = try container.decode(String.self, forKey: .keyId)
+            algorithm = try container.decode(JWK.Algorithm.self, forKey: .algorithm)
+        }
     }
     
     /// Initializer to create a JWT instance from a raw string value.
@@ -77,7 +78,7 @@ public struct JWT: RawRepresentable, Sendable, Codable, HasClaims, Expires {
     }
     
     /// Verifies the JWT token using the given ``JWK`` key.
-    /// - Parameter keySet: JWK keyset which should be used to verify this token.
+    /// - Parameter key: JWK key to use to verify this token.
     /// - Returns: Returns whether or not signing passes for this token/key combination.
     /// - Throws: ``JWTError``
     public func validate(using keySet: JWKS) throws -> Bool {
@@ -93,8 +94,7 @@ public struct JWT: RawRepresentable, Sendable, Codable, HasClaims, Expires {
         rawValue = token
         
         let components = JWT.tokenComponents(from: rawValue)
-        guard components.count >= 2, components.count <= 3
-        else {
+        guard components.count == 3 else {
             throw JWTError.badTokenStructure
         }
         
@@ -103,20 +103,15 @@ public struct JWT: RawRepresentable, Sendable, Codable, HasClaims, Expires {
         else { throw JWTError.invalidBase64Encoding }
         
         self.header = try JSONDecoder().decode(JWT.Header.self, from: headerData)
-        self.body = try JSON(payloadData)
-
-        if components.count == 3 {
-            self.signature = components[2]
+        guard let payload = try JSONSerialization.jsonObject(with: payloadData, options: []) as? [String: Any] else {
+            throw JWTError.badTokenStructure
         }
+        
+        self.payload = payload
     }
     
     /// Raw paylaod of claims, as a dictionary representation.
-    public var body: JSON
-    
-    /// Signature of the JWT token.
-    public var signature: String?
-
-    public var payload: [String: any Sendable] { body.payload }
+    public let payload: [String: Any]
 
     static func tokenComponents(from token: String) -> [String] {
         token

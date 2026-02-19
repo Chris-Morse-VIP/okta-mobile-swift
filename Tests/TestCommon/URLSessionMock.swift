@@ -13,53 +13,26 @@
 import Foundation
 import XCTest
 
-#if canImport(FoundationNetworking)
+#if os(Linux)
 import FoundationNetworking
-#endif
-
-#if !COCOAPODS
-import CommonSupport
 #endif
 
 @testable import AuthFoundation
 
-class URLSessionMock: URLSessionProtocol, @unchecked Sendable {
+class URLSessionMock: URLSessionProtocol {
     var configuration: URLSessionConfiguration = .ephemeral
     let queue = DispatchQueue(label: "URLSessionMock")
-    private let lock = Lock()
-
-    enum Match {
-        case url(String)
-        case body(String)
-    }
-
+    
     struct Call {
         let url: String
         let data: Data?
         let response: HTTPURLResponse?
-        let error: (any Error)?
+        let error: Error?
     }
     
     var requestDelay: TimeInterval?
 
-    private var _requests: [URLRequest] = []
-    private(set) var requests: [URLRequest] {
-        get {
-            lock.withLock {
-                queue.sync {
-                    _requests
-                }
-            }
-        }
-        set {
-            lock.withLock {
-                queue.sync {
-                    _requests = newValue
-                }
-            }
-        }
-    }
-
+    private(set) var requests: [URLRequest] = []
     func resetRequests() {
         requests.removeAll()
     }
@@ -71,31 +44,12 @@ class URLSessionMock: URLSessionProtocol, @unchecked Sendable {
         }
     }
     
-    func request(matching match: Match) -> URLRequest? {
-        requests.first(where: { request in
-            switch match {
-            case .url(let string):
-                return request.url?.absoluteString.localizedCaseInsensitiveContains(string) ?? false
-            case .body(let string):
-                return request.bodyString?.localizedCaseInsensitiveContains(string) ?? false
-            }
-        })
-    }
-
-    func request(matching string: String) -> URLRequest? {
-        request(matching: .url(string))
-    }
-    
-    func formDecodedBody(matching string: String) -> [String: String?]? {
-        request(matching: string)?.httpBody?.urlFormEncoded
-    }
-    
     func expect(_ url: String,
                 data: Data?,
                 statusCode: Int = 200,
                 contentType: String = "application/x-www-form-urlencoded",
                 headerFields: [String : String]? = nil,
-                error: (any Error)? = nil)
+                error: Error? = nil)
     {
         let headerFields = ["Content-Type": contentType].merging(headerFields ?? [:]){ (_, new) in new }
         let response = HTTPURLResponse(url: URL(string: url)!,
@@ -122,31 +76,81 @@ class URLSessionMock: URLSessionProtocol, @unchecked Sendable {
         }
     }
     
-    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-        let call = call(for: request.url!.absoluteString)
+    func dataTaskWithRequest(_ request: URLRequest, completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTaskProtocol {
+        let response = call(for: request.url!.absoluteString)
         requests.append(request)
+        return URLSessionDataTaskMock(session: self,
+                                      data: response?.data,
+                                      response: response?.response,
+                                      error: response?.error,
+                                      completionHandler: completionHandler)
+    }
+
+    func dataTask(with request: URLRequest, completionHandler: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTaskProtocol {
+        let response = call(for: request.url!.absoluteString)
+        requests.append(request)
+        return URLSessionDataTaskMock(session: self,
+                                      data: response?.data,
+                                      response: response?.response,
+                                      error: response?.error,
+                                      completionHandler: completionHandler)
+    }
+    
+    #if swift(>=5.5.1)
+    @available(iOS 13.0, tvOS 13.0, macOS 10.15, watchOS 6, *)
+    func data(for request: URLRequest, delegate: URLSessionTaskDelegate?) async throws -> (Data, URLResponse) {
+        requests.append(request)
+
+        let response = call(for: request.url!.absoluteString)
+        if let error = response?.error {
+            throw error
+        }
         
-        return try await withCheckedThrowingContinuation { continuation in
-            Task {
-                if let delay = requestDelay {
-                    try await Task.sleep(delay: delay)
-                }
+        else if let data = response?.data,
+                let response = response?.response
+        {
+            return (data, response)
+        }
+        
+        else {
+            throw APIClientError.unknown
+        }
+    }
+    #endif
+}
 
-                queue.sync {
-                    guard let data = call?.data,
-                          let response = call?.response
-                    else {
-                        if let error = call?.error {
-                            continuation.resume(throwing: error)
-                        } else {
-                            continuation.resume(throwing: APIClientError.missingResponse(request: request))
-                        }
-                        return
-                    }
-
-                    continuation.resume(returning: (data, response))
-                }
+class URLSessionDataTaskMock: URLSessionDataTaskProtocol {
+    weak var session: URLSessionMock?
+    
+    let completionHandler: (Data?, HTTPURLResponse?, Error?) -> Void
+    let data: Data?
+    let response: HTTPURLResponse?
+    let error: Error?
+    
+    init(session: URLSessionMock,
+         data: Data?,
+         response: HTTPURLResponse?,
+         error: Error?,
+         completionHandler: @escaping (Data?, HTTPURLResponse?, Error?) -> Void)
+    {
+        self.session = session
+        self.completionHandler = completionHandler
+        self.data = data
+        self.response = response
+        self.error = error
+    }
+    
+    func resume() {
+        guard let delay = session?.requestDelay else {
+            DispatchQueue.global().async {
+                self.completionHandler(self.data, self.response, self.error)
             }
+            return
+        }
+        
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay) {
+            self.completionHandler(self.data, self.response, self.error)
         }
     }
 }
+

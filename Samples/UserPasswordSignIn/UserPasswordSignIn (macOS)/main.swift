@@ -12,7 +12,7 @@
 
 import Foundation
 import ArgumentParser
-import OAuth2Auth
+import OktaOAuth2
 
 typealias Command = AsyncParsableCommand
 
@@ -25,7 +25,7 @@ struct UserPasswordSignIn: Command {
     var clientId: String
     
     @Option(help: "The scopes to use.")
-    var scope: String = "openid profile"
+    var scopes: String = "openid profile"
     
     @Option(help: "Username to use")
     var username: String?

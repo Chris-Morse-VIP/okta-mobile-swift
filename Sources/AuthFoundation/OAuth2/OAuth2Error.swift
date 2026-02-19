@@ -20,9 +20,9 @@ public enum OAuth2Error: Error {
     /// Cannot compose a URL to authenticate with.
     case cannotComposeUrl
     
-    /// An OAuth2 server error has been returned.
-    case server(error: OAuth2ServerError)
-
+    /// An OAuth2 server error was reported, with the given values.
+    case oauth2Error(code: String, description: String?, additionalKeys: [String: String]? = nil)
+    
     /// A network error was encountered, encapsulating a ``APIClientError`` type describing the underlying error.
     case network(error: APIClientError)
     
@@ -31,16 +31,7 @@ public enum OAuth2Error: Error {
     
     /// Cannot perform an operation since the token is missing its client configuration.
     case missingClientConfiguration
-
-    /// An operation was expecting a valid context state.
-    case invalidContext
-
-    /// An operation was performed which requires a `redirect_uri`, but none was supplied to the client configuration.
-    case redirectUriRequired
-
-    /// The redirect URI is invalid or unsupported by the client.
-    case redirectUri(_ redirectUri: URL, reason: RedirectReason)
-
+    
     /// Could not verify the token's signature.
     case signatureInvalid
     
@@ -54,7 +45,7 @@ public enum OAuth2Error: Error {
     case missingOpenIdConfiguration(attribute: String)
     
     /// The given nested error was thrown.
-    case error(_ error: any Error)
+    case error(_ error: Error)
     
     /// Cannot revoke the given token type.
     case cannotRevoke(type: Token.RevokeType)
@@ -63,20 +54,7 @@ public enum OAuth2Error: Error {
     case multiple(errors: [OAuth2Error])
 }
 
-extension OAuth2Error {
-    /// Describes the various reasons why a redirect URI may be invalid.
-    public enum RedirectReason: Error {
-        case invalid
-        case codeRequired
-        case hostOrPath
-        case scheme(_ scheme: String?)
-        case queryArgument(_ argument: String)
-        case state(_ state: String?)
-    }
-}
-
 extension OAuth2Error: LocalizedError {
-    @_documentation(visibility: internal)
     public var errorDescription: String? {
         switch self {
         case .invalidUrl:
@@ -85,58 +63,51 @@ extension OAuth2Error: LocalizedError {
                                      bundle: .authFoundation,
                                      comment: "Invalid URL")
 
-        case .redirectUriRequired:
-            return NSLocalizedString("redirect_uri_required",
-                                     tableName: "AuthFoundation",
-                                     bundle: .authFoundation,
-                                     comment: "Missing redirect URI")
-
-        case .invalidContext:
-            return NSLocalizedString("invalid_context",
-                                     tableName: "AuthFoundation",
-                                     bundle: .authFoundation,
-                                     comment: "Missing redirect URI")
-
-        case .redirectUri(let redirectUri, reason: let reason):
-            return String.localizedStringWithFormat(
-                NSLocalizedString("redirect_uri",
-                                  tableName: "AuthFoundation",
-                                  bundle: .authFoundation,
-                                  comment: "Missing token"),
-                redirectUri.absoluteString,
-                reason.localizedDescription)
-
         case .cannotComposeUrl:
             return NSLocalizedString("cannot_compose_url_description",
                                      tableName: "AuthFoundation",
                                      bundle: .authFoundation,
-                                     comment: "Cannot compose URL")
+                                     comment: "Invalid URL")
 
-        case .server(error: let error):
-            return error.errorDescription
+        case .oauth2Error(let code, let description, _):
+            if let description = description {
+                return String.localizedStringWithFormat(
+                    NSLocalizedString("oauth2_error_description",
+                                      tableName: "AuthFoundation",
+                                      bundle: .authFoundation,
+                                      comment: "Invalid URL"),
+                    description, code)
+            }
+            
+            return String.localizedStringWithFormat(
+                NSLocalizedString("oauth2_error_code_description",
+                                  tableName: "AuthFoundation",
+                                  bundle: .authFoundation,
+                                  comment: "Invalid URL"),
+                code)
 
-        case .network(error: let error):
-            return error.errorDescription
+        case .network(let error):
+            return error.localizedDescription
 
         case .missingToken(let type):
             return String.localizedStringWithFormat(
                 NSLocalizedString("missing_token_description",
                                   tableName: "AuthFoundation",
                                   bundle: .authFoundation,
-                                  comment: "Missing token"),
+                                  comment: "Invalid URL"),
                 type.rawValue)
 
         case .missingClientConfiguration:
             return NSLocalizedString("missing_client_configuration_description",
                                      tableName: "AuthFoundation",
                                      bundle: .authFoundation,
-                                     comment: "Missing client configuration")
+                                     comment: "Invalid URL")
 
         case .signatureInvalid:
             return NSLocalizedString("signature_invalid",
                                      tableName: "AuthFoundation",
                                      bundle: .authFoundation,
-                                     comment: "Signature is invalid")
+                                     comment: "Invalid URL")
 
         case .missingLocationHeader:
             return NSLocalizedString("missing_location_header",
@@ -149,11 +120,11 @@ extension OAuth2Error: LocalizedError {
                 NSLocalizedString("missing_openid_configuration_attribute",
                                   tableName: "AuthFoundation",
                                   bundle: .authFoundation,
-                                  comment: "Missing OpenID configuration attribute"),
+                                  comment: "Invalid URL"),
                 name)
 
         case .error(let error):
-            if let error = error as? any LocalizedError {
+            if let error = error as? LocalizedError {
                 return error.localizedDescription
             }
             let errorString = String(describing: error)
@@ -162,14 +133,14 @@ extension OAuth2Error: LocalizedError {
                 NSLocalizedString("error_description",
                                   tableName: "AuthFoundation",
                                   bundle: .authFoundation,
-                                  comment: "Localized error description"),
+                                  comment: "Invalid URL"),
                 errorString)
 
         case .cannotRevoke:
             return NSLocalizedString("cannot_revoke_token",
                                      tableName: "AuthFoundation",
                                      bundle: .authFoundation,
-                                     comment: "Cannot revoke token")
+                                     comment: "")
 
         case .multiple(errors: let errors):
             let errorString = errors
@@ -180,7 +151,7 @@ extension OAuth2Error: LocalizedError {
                 NSLocalizedString("multiple_oauth2_errors",
                                   tableName: "AuthFoundation",
                                   bundle: .authFoundation,
-                                  comment: "Multiple OAuth2 errors"),
+                                  comment: ""),
                 errorString)
             
         case .missingOAuth2ResponseKey(let key):
@@ -188,71 +159,9 @@ extension OAuth2Error: LocalizedError {
                 NSLocalizedString("missing_oauth2_response_key",
                                   tableName: "AuthFoundation",
                                   bundle: .authFoundation,
-                                  comment: "Missing OAuth2 response key"),
+                                  comment: ""),
                 key)
-        }
-    }
-}
 
-extension OAuth2Error.RedirectReason: LocalizedError {
-    @_documentation(visibility: internal)
-    public var errorDescription: String? {
-        switch self {
-        case .invalid:
-            return NSLocalizedString("redirect_reason_invalid",
-                                  tableName: "AuthFoundation",
-                                  bundle: .authFoundation,
-                                  comment: "Not a URL")
-
-        case .codeRequired:
-            return NSLocalizedString("redirect_reason_code_required",
-                                  tableName: "AuthFoundation",
-                                  bundle: .authFoundation,
-                                  comment: "Missing code")
-
-        case .hostOrPath:
-            return NSLocalizedString("redirect_reason_host_or_path",
-                                  tableName: "AuthFoundation",
-                                  bundle: .authFoundation,
-                                  comment: "Incorrect host or path")
-
-        case .scheme(let scheme):
-            if let scheme {
-                return String.localizedStringWithFormat(
-                    NSLocalizedString("redirect_reason_scheme",
-                                      tableName: "AuthFoundation",
-                                      bundle: .authFoundation,
-                                      comment: "Scheme invalid"),
-                    scheme)
-            }
-
-            return NSLocalizedString("redirect_reason_scheme_null",
-                                  tableName: "AuthFoundation",
-                                  bundle: .authFoundation,
-                                  comment: "Scheme null")
-
-        case .queryArgument(let argument):
-            return String.localizedStringWithFormat(
-                NSLocalizedString("redirect_reason_query_argument",
-                                  tableName: "AuthFoundation",
-                                  bundle: .authFoundation,
-                                  comment: "Query argument"),
-                argument)
-
-        case .state(let state):
-            if let state {
-                return String.localizedStringWithFormat(
-                    NSLocalizedString("redirect_reason_state",
-                                      tableName: "AuthFoundation",
-                                      bundle: .authFoundation,
-                                      comment: "Invalid state"),
-                    state)
-            }
-
-            return NSLocalizedString("redirect_reason_state_null",
-                                  tableName: "AuthFoundation",
-                                  bundle: .authFoundation,
-                                  comment: "Missing state")
         }
     }
 }
@@ -263,23 +172,17 @@ extension OAuth2Error: Equatable {
          lhs.domain == rhs.domain)
     }
     
-    @_documentation(visibility: internal)
     public static func == (lhs: OAuth2Error, rhs: OAuth2Error) -> Bool {
         switch (lhs, rhs) {
         case (.invalidUrl, .invalidUrl): return true
-        case (.invalidContext, .invalidContext): return true
-        case (.redirectUriRequired, .redirectUriRequired): return true
         case (.cannotComposeUrl, .cannotComposeUrl): return true
         case (.signatureInvalid, .signatureInvalid): return true
         case (.missingLocationHeader, .missingLocationHeader): return true
         case (.missingClientConfiguration, .missingClientConfiguration): return true
-        case (.redirectUri(let lhsUri, reason: let lhsReason),
-            .redirectUri(let rhsUri, reason: let rhsReason)):
-            return lhsUri == rhsUri && lhsReason == rhsReason
 
-        case (.server(error: let lhsError), .server(error: let rhsError)):
-            return lhsError == rhsError
-
+        case (.oauth2Error(code: let lhsCode, description: let lhsDescription, additionalKeys: _), .oauth2Error(code: let rhsCode, description: let rhsDescription, additionalKeys: _)):
+            return (lhsCode == rhsCode && lhsDescription == rhsDescription)
+            
         case (.network(error: let lhsError), .network(error: let rhsError)):
             return lhsError == rhsError
             
@@ -298,25 +201,6 @@ extension OAuth2Error: Equatable {
         case (.multiple(errors: let lhsErrors), .multiple(errors: let rhsErrors)):
             return lhsErrors == rhsErrors
             
-        default:
-            return false
-        }
-    }
-}
-
-extension OAuth2Error.RedirectReason: Equatable {
-    @_documentation(visibility: internal)
-    public static func == (lhs: OAuth2Error.RedirectReason, rhs: OAuth2Error.RedirectReason) -> Bool {
-        switch (lhs, rhs) {
-        case (.invalid, .invalid): return true
-        case (.hostOrPath, .hostOrPath): return true
-        case (.codeRequired, .codeRequired): return true
-        case (.scheme(let lhsScheme), .scheme(let rhsScheme)):
-            return lhsScheme == rhsScheme
-        case (.queryArgument(let lhsArgument), .queryArgument(let rhsArgument)):
-            return lhsArgument == rhsArgument
-        case (.state(let lhsState), .state(let rhsState)):
-            return lhsState == rhsState
         default:
             return false
         }

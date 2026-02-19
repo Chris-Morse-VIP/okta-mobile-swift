@@ -31,7 +31,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         }
         
         // Import the default `Okta.plist` configuration for migration
-        try? Migration.LegacyOIDC.register()
+        try? SDKVersion.Migration.LegacyOIDC.register()
 
         return true
     }

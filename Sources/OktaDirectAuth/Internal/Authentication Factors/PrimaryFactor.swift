@@ -27,60 +27,48 @@ extension DirectAuthenticationFlow.PrimaryFactor {
 extension DirectAuthenticationFlow.PrimaryFactor: AuthenticationFactor {
     func stepHandler(flow: DirectAuthenticationFlow,
                      openIdConfiguration: OpenIdConfiguration,
-                     loginHint: String? = nil) async throws -> any StepHandler
+                     loginHint: String? = nil,
+                     currentStatus: DirectAuthenticationFlow.Status? = nil,
+                     factor: DirectAuthenticationFlow.PrimaryFactor) throws -> StepHandler
     {
-        guard let context = await flow._context else {
-            throw DirectAuthenticationFlowError.inconsistentContextState
-        }
-        
         switch self {
         case .otp: fallthrough
         case .password:
             let request = TokenRequest(openIdConfiguration: openIdConfiguration,
                                        clientConfiguration: flow.client.configuration,
-                                       context: context,
+                                       currentStatus: currentStatus,
                                        loginHint: loginHint,
-                                       factor: self,
+                                       factor: factor,
                                        grantTypesSupported: flow.supportedGrantTypes)
             return TokenStepHandler(flow: flow, request: request)
         case .oob(channel: let channel):
+            var bindingContext: DirectAuthenticationFlow.BindingUpdateContext?
+            if case .bindingUpdate(let context) = currentStatus {
+                bindingContext = context
+            }
             return try OOBStepHandler(flow: flow,
                                       openIdConfiguration: openIdConfiguration,
-                                      context: context,
+                                      currentStatus: currentStatus,
                                       loginHint: loginHint,
                                       channel: channel,
-                                      factor: self)
+                                      factor: factor,
+                                      bindingContext: bindingContext)
         case .webAuthn:
-            let mfaContext = context.currentStatus?.mfaContext
+            let mfaContext = currentStatus?.mfaContext
             let request = try WebAuthnChallengeRequest(openIdConfiguration: openIdConfiguration,
                                                        clientConfiguration: flow.client.configuration,
-                                                       context: context,
                                                        loginHint: loginHint,
                                                        mfaToken: mfaContext?.mfaToken)
             return ChallengeStepHandler(flow: flow, request: request) {
-                .continuation(.webAuthn(.init(request: $0, mfaContext: mfaContext)))
+                .webAuthn(.init(request: $0,
+                                mfaContext: mfaContext))
             }
         }
     }
     
-    func grantType(currentStatus: DirectAuthenticationFlow.Status?) -> GrantType {
-        switch self {
-        case .otp:
-            return .otp
-        case .password:
-            return .password
-        case .oob:
-            return .oob
-        case .webAuthn:
-            return .webAuthn
-        }
-    }
-}
-
-extension DirectAuthenticationFlow.PrimaryFactor: HasTokenParameters {
-    func tokenParameters(currentStatus: DirectAuthenticationFlow.Status?) -> [String: any APIRequestArgument] {
-        var result: [String: any APIRequestArgument] = [
-            "grant_type": grantType(currentStatus: currentStatus),
+    func tokenParameters(currentStatus: DirectAuthenticationFlow.Status?) -> [String: String] {
+        var result: [String: String] = [
+            "grant_type": grantType(currentStatus: currentStatus).rawValue,
         ]
         
         switch self {
@@ -93,5 +81,18 @@ extension DirectAuthenticationFlow.PrimaryFactor: HasTokenParameters {
         }
         
         return result
+    }
+
+    func grantType(currentStatus: DirectAuthenticationFlow.Status?) -> GrantType {
+        switch self {
+        case .otp:
+            return .otp
+        case .password:
+            return .password
+        case .oob:
+            return .oob
+        case .webAuthn:
+            return .webAuthn
+        }
     }
 }

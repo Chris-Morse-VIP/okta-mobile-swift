@@ -12,23 +12,11 @@
 
 import Foundation
 
-#if !COCOAPODS
-import CommonSupport
-#endif
-
-/// Indicates the class contains a collection of delegates, and the necessary convenience functions to add and remove delegates from the collection.
 public protocol UsesDelegateCollection {
     associatedtype Delegate
-
-    /// Adds the given argument as a delegate.
-    /// - Parameter delegate: Delegate to add to the collection.
     func add(delegate: Delegate)
-    
-    /// Removes the given argument from the collection of delegates.
-    /// - Parameter delegate: Delegate to remove from the collection.
     func remove(delegate: Delegate)
 
-    /// The collection of delegates this flow notifies for key authentication events.
     var delegateCollection: DelegateCollection<Delegate> { get }
 }
 
@@ -37,53 +25,37 @@ extension UsesDelegateCollection {
     public func remove(delegate: Delegate) { delegateCollection.remove(delegate) }
 }
 
-public final class DelegateCollection<D>: @unchecked Sendable {
-    @WeakCollection private var delegates: [(any AnyObject)?]
-    private let lock = Lock()
-
+public final class DelegateCollection<D> {
+    @WeakCollection private var delegates: [AnyObject?]
+    
     public init() {
         delegates = []
     }
 }
 
 extension DelegateCollection {
-    /// Adds the given argument as a delegate.
-    /// - Parameter delegate: Delegate to add to the collection.
     public func add(_ delegate: D) {
-        lock.withLock {
-            delegates.append(delegate as AnyObject)
-        }
+        delegates.append(delegate as AnyObject)
     }
     
-    /// Removes the given argument from the collection of delegates.
-    /// - Parameter delegate: Delegate to remove from the collection.
     public func remove(_ delegate: D) {
         let delegateObject = delegate as AnyObject
-        lock.withLock {
-            delegates.removeAll { object in
-                object === delegateObject
-            }
+        delegates.removeAll { object in
+            object === delegateObject
         }
     }
     
-    /// Performs the given block against each delegate within the collection.
-    /// - Parameter block: Block to invoke for each delegate instance.
     public func invoke(_ block: (D) -> Void) {
-        let allDelegates = lock.withLock { _delegates.wrappedValue.compactMap({ $0 }) }
-        allDelegates.forEach {
+        delegates.forEach {
             guard let delegate = $0 as? D else { return }
             block(delegate)
         }
     }
     
-    /// Performs the given block for each delegate within the collection, coalescing the results into the returned array.
-    /// - Parameter block: Block to invoke for each delegate in the collection.
-    /// - Returns: Resulting array of returned values from the delegates in the collection.
     public func call<T>(_ block: (D) -> T) -> [T] {
-        let allDelegates = lock.withLock { _delegates.wrappedValue.compactMap({ $0 }) }
-        return allDelegates.compactMap {
-            guard let delegate = $0 as? D else { return nil }
-            return block(delegate)
-        }
-    }
+          delegates.compactMap {
+              guard let delegate = $0 as? D else { return nil }
+              return block(delegate)
+          }
+      }
 }

@@ -68,10 +68,10 @@ final class TokenInfoTests: XCTestCase {
             "active":false
         ]
         
-        let info1 = TokenInfo(try JSON(data))
+        let info1 = TokenInfo(data)
         XCTAssertFalse(info1.active ?? true)
         
-        let info2 = try XCTUnwrap(TokenInfo(try JSON(data)))
+        let info2 = try XCTUnwrap(TokenInfo(data))
         XCTAssertFalse(info2.active ?? true)
         
         XCTAssertEqual(info1.allClaims, info2.allClaims)

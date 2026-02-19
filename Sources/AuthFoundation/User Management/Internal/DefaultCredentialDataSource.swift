@@ -18,7 +18,7 @@ final class DefaultCredentialDataSource: CredentialDataSource {
 
     private var credentials: [Credential] = []
 
-    weak var delegate: (any CredentialDataSourceDelegate)?
+    weak var delegate: CredentialDataSourceDelegate?
 
     var credentialCount: Int {
         queue.sync { credentials.count }
@@ -28,7 +28,7 @@ final class DefaultCredentialDataSource: CredentialDataSource {
         queue.sync { !credentials.filter({ $0.token == token }).isEmpty }
     }
 
-    func credential(for token: Token, coordinator: any CredentialCoordinator) -> Credential {
+    func credential(for token: Token, coordinator: CredentialCoordinator) -> Credential {
         queue.sync {
             if let credential = credentials.first(where: { $0.token == token }) {
                 return credential

@@ -14,13 +14,9 @@ import XCTest
 @testable import AuthFoundation
 import TestCommon
 
-#if !COCOAPODS
-import CommonSupport
-#endif
-
-class MockTimeCoordinator: @unchecked Sendable, TimeCoordinator {
-    @LockedValue var offset: TimeInterval = 0.0
-
+class MockTimeCoordinator: TimeCoordinator {
+    var offset: TimeInterval = 0.0
+    
     var now: Date {
         Date(timeIntervalSinceNow: offset)
     }

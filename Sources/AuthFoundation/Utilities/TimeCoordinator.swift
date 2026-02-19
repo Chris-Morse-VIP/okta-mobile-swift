@@ -12,20 +12,12 @@
 
 import Foundation
 
-#if !COCOAPODS
-import CommonSupport
-#endif
-
-#if canImport(FoundationNetworking)
-import FoundationNetworking
-#endif
-
 /// Protocol used to return dates and times coordinated against trusted sources.
 ///
 /// This can be used to customize the behavior of how dates and times are calculated, when used on devices that may have skewed or incorrect clocks.
 ///
 /// To use a custom ``TimeCoordinator``, you construct an instance of your class conforming to this protocol, and assign it to the `Date.coordinator` property.
-public protocol TimeCoordinator: Sendable {
+public protocol TimeCoordinator {
     /// Return the current coordinated date.
     var now: Date { get }
     
@@ -36,9 +28,9 @@ public protocol TimeCoordinator: Sendable {
 
 extension Date {
     /// Allows a custom ``TimeCoordinator`` to be used to adjust dates and times for devices with incorrect times.
-    public static var coordinator: any TimeCoordinator {
-        get { sharedTimeCoordinator.wrappedValue }
-        set { sharedTimeCoordinator.wrappedValue = newValue }
+    public static var coordinator: TimeCoordinator {
+        get { SharedTimeCoordinator }
+        set { SharedTimeCoordinator = newValue }
     }
     
     /// Returns the current coordinated date, adjusting the system clock to correct for clock skew.
@@ -52,28 +44,30 @@ extension Date {
     }
 }
 
-private let sharedTimeCoordinator = LockedValue<any TimeCoordinator>(DefaultTimeCoordinator())
+// swiftlint:disable identifier_name
+private var SharedTimeCoordinator: TimeCoordinator = DefaultTimeCoordinator()
+// swiftlint:enable identifier_name
 
-final class DefaultTimeCoordinator: TimeCoordinator, OAuth2ClientDelegate {
+class DefaultTimeCoordinator: TimeCoordinator, OAuth2ClientDelegate {
     static func resetToDefault() {
         Date.coordinator = DefaultTimeCoordinator()
     }
     
-    private let lock = Lock()
-    nonisolated(unsafe) private var _offset: TimeInterval
+    private let lock = UnfairLock()
+    private var _offset: TimeInterval
     private(set) var offset: TimeInterval {
         get { lock.withLock { _offset } }
         set { lock.withLock { _offset = newValue } }
     }
     
-    nonisolated(unsafe) private var observer: (any NSObjectProtocol)?
+    private var observer: NSObjectProtocol?
 
     init() {
         self._offset = 0
-        self.observer = TaskData.notificationCenter.addObserver(forName: .oauth2ClientCreated,
-                                                                object: nil,
-                                                                queue: nil,
-                                                                using: { [weak self] notification in
+        self.observer = NotificationCenter.default.addObserver(forName: .oauth2ClientCreated,
+                                                               object: nil,
+                                                               queue: nil,
+                                                               using: { [weak self] notification in
             guard let self = self,
                   let client = notification.object as? OAuth2Client
             else {
@@ -86,7 +80,7 @@ final class DefaultTimeCoordinator: TimeCoordinator, OAuth2ClientDelegate {
     
     deinit {
         if let observer = observer {
-            TaskData.notificationCenter.removeObserver(observer)
+            NotificationCenter.default.removeObserver(observer)
         }
     }
     
@@ -98,7 +92,7 @@ final class DefaultTimeCoordinator: TimeCoordinator, OAuth2ClientDelegate {
         Date(timeInterval: offset, since: date)
     }
     
-    func api(client: any APIClient, didSend request: URLRequest, received response: HTTPURLResponse) {
+    func api(client: APIClient, didSend request: URLRequest, received response: HTTPURLResponse) {
         guard request.cachePolicy == .reloadIgnoringLocalAndRemoteCacheData,
               let dateString = response.allHeaderFields["Date"] as? String,
               let date = httpDateFormatter.date(from: dateString)
@@ -109,10 +103,3 @@ final class DefaultTimeCoordinator: TimeCoordinator, OAuth2ClientDelegate {
         offset = date.timeIntervalSinceNow
     }
 }
-
-// Work around a bug in Swift 5.10 that ignores `nonisolated(unsafe)` on mutable stored properties.
-#if swift(<6.0)
-extension DefaultTimeCoordinator: @unchecked Sendable {}
-#else
-extension DefaultTimeCoordinator: Sendable {}
-#endif

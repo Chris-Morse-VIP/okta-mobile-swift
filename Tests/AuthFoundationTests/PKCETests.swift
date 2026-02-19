@@ -23,7 +23,7 @@ final class PKCETests: XCTestCase {
         
         XCTAssertNotNil(pkce.codeVerifier)
         
-        #if canImport(FoundationNetworking)
+        #if os(Linux)
         XCTAssertEqual(pkce.codeVerifier, pkce.codeChallenge)
         XCTAssertEqual(pkce.method, .plain)
         #else

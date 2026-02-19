@@ -16,21 +16,21 @@ import Foundation
 ///
 /// This provides a convenience mechanism for accessing information related to a token. It supports the ``HasClaims`` protocol, to simplify common operations against introspected information, and to provide consistency with the ``JWT`` class.
 ///
-/// For more information about the members to use, please refer to ``JSONClaimContainer``.
-public struct TokenInfo: Sendable, Codable, JSONClaimContainer {
+/// For more information about the members to use, please refer to ``ClaimContainer``.
+public struct TokenInfo: Codable, JSONClaimContainer {
     public typealias ClaimType = JWTClaim
     
-    public let json: JSON
-
-    @_documentation(visibility: internal)
-    public init(_ json: JSON) {
-        self.json = json
+    public let payload: [String: Any]
+    
+    public init(_ info: [String: Any]) {
+        self.payload = info
     }
     
-    public func encode(to encoder: any Encoder) throws {
-        try json.encode(to: encoder)
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: JSONCodingKeys.self)
+        self.init(try container.decode([String: Any].self))
     }
-
+    
     /// Indicates if this token is active.
     public var active: Bool? { self["active"] }
 
@@ -39,6 +39,5 @@ public struct TokenInfo: Sendable, Codable, JSONClaimContainer {
 }
 
 extension TokenInfo: JSONDecodable {
-    @_documentation(visibility: internal)
-    public static let jsonDecoder = JSONDecoder()
+    public static var jsonDecoder = JSONDecoder()
 }

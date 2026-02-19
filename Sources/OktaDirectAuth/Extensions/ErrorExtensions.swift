@@ -15,16 +15,6 @@ import Foundation
 extension DirectAuthenticationFlowError: LocalizedError {
     public var errorDescription: String? {
         switch self {
-        case .flowNotStarted:
-            return NSLocalizedString("flow_not_started",
-                                     tableName: "OktaDirectAuth",
-                                     bundle: .oktaDirectAuth,
-                                     comment: "Flow not started")
-        case .inconsistentContextState:
-            return NSLocalizedString("inconsistent_context_state",
-                                     tableName: "OktaDirectAuth",
-                                     bundle: .oktaDirectAuth,
-                                     comment: "Inconsistent context state")
         case .pollingTimeoutExceeded:
             return NSLocalizedString("polling_timeout_exceeded",
                                      tableName: "OktaDirectAuth",
@@ -51,11 +41,6 @@ extension DirectAuthenticationFlowError: LocalizedError {
             return error.localizedDescription
         case .other(error: let error):
             return error.localizedDescription
-        case .invalidContinuationContext:
-            return NSLocalizedString("invalid_continuation_context",
-                                     tableName: "OktaDirectAuth",
-                                     bundle: .oktaDirectAuth,
-                                     comment: "Invalid continuation context")
         }
     }
 }

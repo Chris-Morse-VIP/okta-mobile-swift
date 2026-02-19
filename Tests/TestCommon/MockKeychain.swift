@@ -10,12 +10,12 @@
 // See the License for the specific language governing permissions and limitations under the License.
 //
 
-#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS) || (swift(>=5.10) && os(visionOS))
+#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
 
 import Foundation
 @testable import AuthFoundation
 
-final class MockKeychain: @unchecked Sendable, KeychainProtocol {
+class MockKeychain: KeychainProtocol {
     private var results = [CFTypeRef?]()
     private var statuses = [OSStatus]()
     private(set) var operations = [Operation]()

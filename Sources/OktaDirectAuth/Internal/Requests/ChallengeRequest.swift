@@ -13,21 +13,21 @@
 import Foundation
 import AuthFoundation
 
-struct ChallengeRequest: AuthenticationFlowRequest {
-    typealias Flow = DirectAuthenticationFlow
-    
+extension OpenIdConfiguration {
+    var challengeEndpoint: URL? {
+        tokenEndpoint.url(replacing: "/token", with: "/challenge")
+    }
+}
+
+struct ChallengeRequest {
     let url: URL
     let clientConfiguration: OAuth2Client.Configuration
-    let context: Flow.Context
     let mfaToken: String
-    let channel: DirectAuthenticationFlow.OOBChannel?
     let challengeTypesSupported: [GrantType]
     
     init(openIdConfiguration: OpenIdConfiguration,
          clientConfiguration: OAuth2Client.Configuration,
-         context: DirectAuthenticationFlow.Context,
          mfaToken: String,
-         channel: DirectAuthenticationFlow.OOBChannel?,
          challengeTypesSupported: [GrantType]) throws
     {
         guard let url = openIdConfiguration.challengeEndpoint else {
@@ -36,13 +36,11 @@ struct ChallengeRequest: AuthenticationFlowRequest {
         
         self.url = url
         self.clientConfiguration = clientConfiguration
-        self.context = context
         self.mfaToken = mfaToken
-        self.channel = channel
         self.challengeTypesSupported = challengeTypesSupported
     }
     
-    struct Response: Codable, JSONDecodable {
+    struct Response: Codable {
         let challengeType: GrantType
         let oobCode: String?
         let expiresIn: TimeInterval?
@@ -68,12 +66,6 @@ struct ChallengeRequest: AuthenticationFlowRequest {
                          bindingMethod: bindingMethod,
                          bindingCode: bindingCode)
         }
-        
-        static var jsonDecoder: JSONDecoder {
-            let result = JSONDecoder()
-            result.keyDecodingStrategy = .convertFromSnakeCase
-            return result
-        }
     }
 }
 
@@ -83,21 +75,17 @@ extension ChallengeRequest: APIRequest, APIRequestBody {
     var httpMethod: APIRequestMethod { .post }
     var contentType: APIContentType? { .formEncoded }
     var acceptsType: APIContentType? { .json }
-    var category: AuthFoundation.OAuth2APIRequestCategory { .other }
-    var bodyParameters: [String: any APIRequestArgument]? {
-        var result = clientConfiguration.parameters(for: category) ?? [:]
-        result.merge(context.parameters(for: category))
-        result.merge([
+    var bodyParameters: [String: Any]? {
+        var result: [String: Any] = [
+            "client_id": clientConfiguration.clientId,
             "mfa_token": mfaToken,
             "challenge_types_supported": challengeTypesSupported
-        ])
+                .map(\.rawValue)
+                .joined(separator: " ")
+        ]
         
-        if result["client_id"] == nil {
-            result["client_id"] = clientConfiguration.clientId
-        }
-
-        if let channel {
-            result["channel_hint"] = channel
+        if let parameters = clientConfiguration.authentication.additionalParameters {
+            result.merge(parameters, uniquingKeysWith: { $1 })
         }
 
         return result

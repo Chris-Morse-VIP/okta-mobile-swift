@@ -13,16 +13,17 @@
 import Foundation
 
 /// Indicates a type can be consumed from a ``HasClaims`` object and converted to the indicated type.
-public protocol ClaimConvertable: Sendable {
-    /// Converts the given `Any` value to an instance of the conforming type's class, otherwise return `nil` if this cannot be done.
-    /// - Parameter value: The value to convert.
-    /// - Returns: The converted value, or `nil`.
-    static func convert(from value: Any?) -> Self?
+public protocol ClaimConvertable {
+    static func claim(_ claim: String,
+                      in type: any HasClaims,
+                      from value: Any?) -> Self?
 }
 
 extension ClaimConvertable {
-    @_documentation(visibility: private)
-    public static func convert(from value: Any?) -> Self? {
+    public static func claim(_ claim: String,
+                             in type: any HasClaims,
+                             from value: Any?) -> Self?
+    {
         value as? Self
     }
 }

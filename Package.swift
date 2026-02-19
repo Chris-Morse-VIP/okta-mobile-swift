@@ -1,130 +1,62 @@
-// swift-tools-version:6.0
+// swift-tools-version:5.6
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
-import Foundation
 import PackageDescription
 
-let strictConcurrencyEnabled = true
-extension Array<SwiftSetting> {
-    static var common: Self {
-        [
-            .enableUpcomingFeature("ExistentialAny"),
-        ]
-    }
-
-    static var libraryTarget: Self {
-        if strictConcurrencyEnabled {
-            return common + [
-                .enableExperimentalFeature("StrictConcurrency=complete"),
-            ]
-        } else {
-            return common
-        }
-    }
-
-    static var testTarget: Self {
-        common
-    }
-}
-
 var package = Package(
-    name: "OktaClient",
+    name: "AuthFoundation",
     defaultLocalization: "en",
     platforms: [
-        .iOS(.v13),
-        .tvOS(.v13),
+        .iOS(.v10),
+        .tvOS(.v10),
         .watchOS(.v7),
-        .visionOS(.v1),
-        .macOS(.v10_15),
+        .macOS(.v10_12),
         .macCatalyst(.v13)
     ],
     products: [
-        .library(name: "CommonSupport", targets: ["CommonSupport"]),
-        .library(name: "JSON", targets: ["JSON"]),
-        .library(name: "AuthFoundation", targets: ["CommonSupport", "JSON", "AuthFoundation"]),
-        .library(name: "OAuth2Auth", targets: ["OAuth2Auth"]),
+        .library(name: "AuthFoundation", targets: ["AuthFoundation"]),
+        .library(name: "OktaOAuth2", targets: ["OktaOAuth2"]),
         .library(name: "OktaDirectAuth", targets: ["OktaDirectAuth"]),
-        .library(name: "OktaIdxAuth", targets: ["OktaIdxAuth"])
+        .library(name: "WebAuthenticationUI", targets: ["WebAuthenticationUI"])
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.4.0")
+        .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0")
     ],
     targets: [
-        .target(name: "CommonSupport",
-                swiftSettings: .libraryTarget),
-        .target(name: "JSON",
-                dependencies: ["CommonSupport"],
-                swiftSettings: .libraryTarget),
         .target(name: "AuthFoundation",
-                dependencies: ["CommonSupport", "JSON"],
-                resources: [.process("Resources")],
-                swiftSettings: .libraryTarget),
-        .target(name: "OAuth2Auth",
+                dependencies: [],
+                resources: [.process("Resources")]),
+        .target(name: "OktaOAuth2",
                 dependencies: [
                     .target(name: "AuthFoundation")
                 ],
-                resources: [.process("Resources")],
-                swiftSettings: .libraryTarget),
+                resources: [.process("Resources")]),
         .target(name: "OktaDirectAuth",
                 dependencies: [
                     .target(name: "AuthFoundation")
                 ],
-                resources: [.process("Resources")],
-                swiftSettings: .libraryTarget),
-        .target(name: "OktaIdxAuth",
+                resources: [.process("Resources")]),
+        .target(name: "WebAuthenticationUI",
                 dependencies: [
-                    .target(name: "AuthFoundation")
+                    .target(name: "OktaOAuth2")
                 ],
-                resources: [.process("Resources")],
-                swiftSettings: .libraryTarget),
+                resources: [.process("Resources")]),
     ] + [
         .target(name: "TestCommon",
                 dependencies: ["AuthFoundation"],
-                path: "Tests/TestCommon",
-                swiftSettings: .testTarget),
-        .testTarget(name: "CommonSupportTests",
-                    dependencies: ["CommonSupport", "TestCommon"],
-                    swiftSettings: .testTarget),
-        .testTarget(name: "JSONTests",
-                    dependencies: ["JSON", "TestCommon"],
-                    swiftSettings: .testTarget),
+                path: "Tests/TestCommon"),
         .testTarget(name: "AuthFoundationTests",
                     dependencies: ["AuthFoundation", "TestCommon"],
-                    resources: [
-                        .copy("MockResponses"),
-                        .copy("ConfigResources"),
-                    ],
-                    swiftSettings: .testTarget),
-        .testTarget(name: "OAuth2AuthTests",
-                    dependencies: ["OAuth2Auth", "TestCommon"],
-                    resources: [ .copy("MockResponses") ],
-                    swiftSettings: .testTarget),
+                    resources: [ .copy("MockResponses") ]),
+        .testTarget(name: "OktaOAuth2Tests",
+                    dependencies: ["OktaOAuth2", "TestCommon"],
+                    resources: [ .copy("MockResponses") ]),
         .testTarget(name: "OktaDirectAuthTests",
                     dependencies: ["OktaDirectAuth", "TestCommon"],
-                    resources: [ .copy("MockResponses") ],
-                    swiftSettings: .testTarget),
-        .testTarget(name: "OktaIdxAuthTests",
-                    dependencies: ["OktaIdxAuth", "TestCommon"],
-                    resources: [.copy("MockResponses")],
-                    swiftSettings: .testTarget),
+                    resources: [ .copy("MockResponses") ]),
+        .testTarget(name: "WebAuthenticationUITests",
+                    dependencies: ["WebAuthenticationUI", "TestCommon"],
+                    resources: [ .copy("MockResponses") ])
     ],
-    swiftLanguageModes: [.v5, .v6]
+    swiftLanguageVersions: [.v5]
 )
-
-#if canImport(AuthenticationServices) && canImport(UIKit) || canImport(AppKit)
-package.targets.append(contentsOf: [
-    .target(name: "BrowserSignin",
-            dependencies: [
-                .target(name: "OAuth2Auth")
-            ],
-            resources: [.process("Resources")],
-            swiftSettings: .libraryTarget),
-    .testTarget(name: "BrowserSigninTests",
-                dependencies: ["BrowserSignin", "TestCommon"],
-                resources: [ .copy("MockResponses") ],
-                swiftSettings: .testTarget)
-])
-package.products.append(
-    .library(name: "BrowserSignin", targets: ["BrowserSignin"])
-)
-#endif

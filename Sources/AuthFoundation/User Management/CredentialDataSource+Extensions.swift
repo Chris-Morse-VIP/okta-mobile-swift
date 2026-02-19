@@ -12,12 +12,12 @@
 
 import Foundation
 
-#if canImport(FoundationNetworking)
+#if os(Linux)
 import FoundationNetworking
 #endif
 
 extension CredentialDataSource {
-    public func urlSession(for token: Token) -> any URLSessionProtocol {
-        OAuth2Client.defaultSession ?? URLSession(configuration: .ephemeral)
+    public func urlSession(for token: Token) -> URLSessionProtocol {
+        URLSession(configuration: .ephemeral)
     }
 }

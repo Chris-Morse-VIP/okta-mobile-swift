@@ -13,19 +13,6 @@
 import Foundation
 
 /// Protocol that represents a type of ``APIRequest`` that can be used to exchange a token.
-///
-/// Many different OAuth2 authentication flows can issue tokens, but the types of arguments and their particular workflow can differ. This protocol abstracts the necessary interface for requests that are capable of returning tokens, while allowing the specific arguments and validation steps to be implemented for each unique type of flow.
-public protocol OAuth2TokenRequest: APIParsingContext, OAuth2APIRequest, APIRequestBody where ResponseType == Token {
-    /// The configuration for the OAuth2 client this token is being requested from.
-    var clientConfiguration: OAuth2Client.Configuration { get }
-    
-    /// The originating request context to use when validating the ID token.
-    var tokenValidatorContext: any IDTokenValidatorContext { get }
-}
-
-extension OAuth2TokenRequest {
-    public var url: URL { openIdConfiguration.tokenEndpoint }
-    public var httpMethod: APIRequestMethod { .post }
-    public var contentType: APIContentType? { .formEncoded }
-    public var acceptsType: APIContentType? { .json }
+public protocol OAuth2TokenRequest: APIRequest where ResponseType == Token {
+    var clientId: String { get }
 }

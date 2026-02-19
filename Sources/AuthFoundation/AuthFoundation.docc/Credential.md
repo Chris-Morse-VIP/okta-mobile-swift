@@ -1,5 +1,9 @@
 # ``AuthFoundation/Credential``
 
+@Metadata {
+    @DocumentationExtension(mergeBehavior: append)
+}
+
 ## Storing Credentials
 
 The Credential class fundamentally is used as a convenience to simplify access and storage of ``Token``s. Regardless of how the token is created, it can be securely stored by using ``store(_:tags:security:)``. This saves the token for later use.

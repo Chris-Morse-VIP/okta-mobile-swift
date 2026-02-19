@@ -95,7 +95,7 @@ class SignInScreen: Screen {
             if let fieldValue = field.value as? String,
                !fieldValue.isEmpty
             {
-                Thread.sleep(forTimeInterval: 0.1) // Wait for the field to be selected
+                usleep(useconds_t(1000)) // Wait for the field to be selected
                 field.tap(withNumberOfTaps: 3, numberOfTouches: 1)
             }
             

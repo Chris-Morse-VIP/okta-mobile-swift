@@ -19,19 +19,13 @@ struct TestStepHandler: StepHandler {
     let flow: OktaDirectAuth.DirectAuthenticationFlow
     let openIdConfiguration: AuthFoundation.OpenIdConfiguration
     let loginHint: String?
-    let context: OktaDirectAuth.DirectAuthenticationFlow.Context
+    let currentStatus: OktaDirectAuth.DirectAuthenticationFlow.Status?
     let factor: TestFactor
     let result: (Result<OktaDirectAuth.DirectAuthenticationFlow.Status, OktaDirectAuth.DirectAuthenticationFlowError>)?
     
-    func process() async throws -> OktaDirectAuth.DirectAuthenticationFlow.Status {
-        switch result {
-        case .success(let success):
-            return success
-        case .failure(let failure):
-            throw failure
-        case nil:
-            throw DirectAuthenticationFlowError.flowNotStarted
-        }
+    func process(completion: @escaping (Result<OktaDirectAuth.DirectAuthenticationFlow.Status, OktaDirectAuth.DirectAuthenticationFlowError>) -> Void) {
+        guard let result = result else { return }
+        completion(result)
     }
 }
 
@@ -43,13 +37,15 @@ struct TestFactor: AuthenticationFactor {
         .implicit
     }
     
-    func tokenParameters(currentStatus: DirectAuthenticationFlow.Status?) -> [String: any APIRequestArgument] {
+    func tokenParameters(currentStatus: DirectAuthenticationFlow.Status?) -> [String: String] {
         [:]
     }
     
     func stepHandler(flow: OktaDirectAuth.DirectAuthenticationFlow,
                      openIdConfiguration: AuthFoundation.OpenIdConfiguration,
-                     loginHint: String?) async throws -> any OktaDirectAuth.StepHandler
+                     loginHint: String?,
+                     currentStatus: OktaDirectAuth.DirectAuthenticationFlow.Status?,
+                     factor: TestFactor) throws -> OktaDirectAuth.StepHandler
     {
         if let exception = exception {
             throw exception
@@ -58,8 +54,8 @@ struct TestFactor: AuthenticationFactor {
         return TestStepHandler(flow: flow,
                                openIdConfiguration: openIdConfiguration,
                                loginHint: loginHint,
-                               context: await flow._context!,
-                               factor: self,
+                               currentStatus: currentStatus,
+                               factor: factor,
                                result: result)
     }
 }
@@ -72,9 +68,9 @@ final class DirectAuthenticationFlowTests: XCTestCase {
     var flow: DirectAuthenticationFlow!
     
     override func setUpWithError() throws {
-        client = OAuth2Client(issuerURL: issuer,
+        client = OAuth2Client(baseURL: issuer,
                               clientId: "clientId",
-                              scope: "openid profile",
+                              scopes: "openid profile",
                               session: urlSession)
         openIdConfiguration = try mock(from: .module,
                                        for: "openid-configuration",
@@ -91,38 +87,46 @@ final class DirectAuthenticationFlowTests: XCTestCase {
         Token.resetToDefault()
     }
     
-    func testDirectAuthSuccess() async throws {
+    func testDirectAuthSuccess() throws {
         urlSession.expect("https://example.okta.com/.well-known/openid-configuration",
                           data: try data(from: .module, for: "openid-configuration", in: "MockResponses"),
                           contentType: "application/json")
         
+        let wait = expectation(description: "run step")
         let token = Token.mockToken()
         let factor = TestFactor(result: .success(.success(token)), exception: nil)
-        await flow.setContext(.init())
-
-        let result = try await flow.runStep(with: factor)
-        XCTAssertEqual(result, .success(token))
+        flow.runStep(with: factor) { result in
+            XCTAssertEqual(result, .success(.success(token)))
+            wait.fulfill()
+        }
+        waitForExpectations(timeout: 1)
     }
     
-    func testDirectAuthFailure() async throws {
+    func testDirectAuthFailure() throws {
         urlSession.expect("https://example.okta.com/.well-known/openid-configuration",
                           data: try data(from: .module, for: "openid-configuration", in: "MockResponses"),
                           contentType: "application/json")
 
+        let wait = expectation(description: "run step")
         let factor = TestFactor(result: .failure(.pollingTimeoutExceeded), exception: nil)
-        await flow.setContext(.init())
-        let error = await XCTAssertThrowsErrorAsync(try await flow.runStep(with: factor))
-        XCTAssertEqual(error as? DirectAuthenticationFlowError, .pollingTimeoutExceeded)
+        flow.runStep(with: factor) { result in
+            XCTAssertEqual(result, .failure(.pollingTimeoutExceeded))
+            wait.fulfill()
+        }
+        waitForExpectations(timeout: 1)
     }
 
-    func testDirectAuthException() async throws {
+    func testDirectAuthException() throws {
         urlSession.expect("https://example.okta.com/.well-known/openid-configuration",
                           data: try data(from: .module, for: "openid-configuration", in: "MockResponses"),
                           contentType: "application/json")
 
+        let wait = expectation(description: "run step")
         let factor = TestFactor(result: nil, exception: APIClientError.invalidRequestData)
-        await flow.setContext(.init())
-        let error = await XCTAssertThrowsErrorAsync(try await flow.runStep(with: factor))
-        XCTAssertEqual(error as? APIClientError, .invalidRequestData)
+        flow.runStep(with: factor) { result in
+            XCTAssertEqual(result, .failure(.network(error: .invalidRequestData)))
+            wait.fulfill()
+        }
+        waitForExpectations(timeout: 1)
     }
 }

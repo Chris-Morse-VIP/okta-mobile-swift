@@ -47,7 +47,7 @@ final class DefaultJWKValidatorTests: XCTestCase {
 
         let jwt = try JWT(String.mockIdToken)
 
-        #if canImport(FoundationNetworking)
+        #if os(Linux)
         XCTAssertThrowsError(try validator.validate(token: jwt, using: jwks))
         #else
         XCTAssertNoThrow(try validator.validate(token: jwt, using: jwks))

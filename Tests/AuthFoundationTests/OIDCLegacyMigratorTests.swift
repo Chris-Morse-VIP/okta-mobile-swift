@@ -14,43 +14,36 @@ import XCTest
 @testable import TestCommon
 @testable import AuthFoundation
 
-#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS) || (swift(>=5.10) && os(visionOS))
+#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
 final class OIDCLegacyMigratorTests: XCTestCase {
-    typealias LegacyOIDC = Migration.LegacyOIDC
+    typealias LegacyOIDC = SDKVersion.Migration.LegacyOIDC
     
     var keychain: MockKeychain!
     let issuer = URL(string: "https://example.com")!
     let redirectUri = URL(string: "my-app:/")!
 
-    override func setUp() async throws {
+    override func setUp() {
         keychain = MockKeychain()
-        Keychain.implementation.wrappedValue = keychain
-
-        await CredentialActor.run {
-            Credential.tokenStorage = MockTokenStorage()
-            Credential.credentialDataSource = MockCredentialDataSource()
-        }
-
-        await MainActor.run {
-            XCTAssertEqual(Migration.shared.registeredMigrators.count, 0)
-        }
+        Keychain.implementation = keychain
+        
+        Credential.tokenStorage = MockTokenStorage()
+        Credential.credentialDataSource = MockCredentialDataSource()
     }
-
-    override func tearDown() async throws {
-        Keychain.resetToDefault()
+    
+    override func tearDownWithError() throws {
+        Keychain.implementation = KeychainImpl()
         keychain = nil
 
-        Migration.shared.resetMigrators()
-
-        await CredentialActor.run {
-            TaskData.coordinator.resetToDefault()
-        }
+        SDKVersion.Migration.resetMigrators()
+        
+        Credential.tokenStorage = CredentialCoordinatorImpl.defaultTokenStorage()
+        Credential.credentialDataSource = CredentialCoordinatorImpl.defaultCredentialDataSource()
     }
 
     func testRegister() throws {
         LegacyOIDC.register(clientId: "clientId")
         
-        let migrator = try XCTUnwrap(Migration.shared.registeredMigrators.first(where: {
+        let migrator = try XCTUnwrap(SDKVersion.Migration.registeredMigrators.first(where: {
             $0 is LegacyOIDC
         }) as? LegacyOIDC)
         
@@ -110,57 +103,51 @@ final class OIDCLegacyMigratorTests: XCTestCase {
     }
 
     func testMigrate() throws {
-        let notificationCenter = NotificationCenter()
-        try TaskData.$notificationCenter.withValue(notificationCenter) {
-            let notificationRecorder = NotificationRecorder(center: notificationCenter,
-                                                            observing: [.credentialMigrated])
-            let migrator = LegacyOIDC(clientId: "clientId")
-
-            // Note: This mock file was generated manually using the okta-oidc-ios package, archived, and base64-encoded.
-            let base64Data = try data(from: .module, for: "MockLegacyOIDCKeychainItem.data", in: "MockResponses")
-            let base64String = try XCTUnwrap(String(data: base64Data, encoding: .utf8))
-                .trimmingCharacters(in: .newlines)
-            let oidcData = try XCTUnwrap(Data(base64Encoded: base64String))
-
-            keychain.expect(noErr, result: [
-                [
-                    "svce": "",
-                    "acct": "0oathisistheaccount0",
-                    "class": "genp",
-                    "cdat": Date(),
-                    "mdat": Date(),
-                    "pdmn": "ak",
-                    "agrp": "com.okta.sample.app"
-                ]
-            ] as CFArray)
-
-            keychain.expect(noErr, result: [
+        let notificationRecorder = NotificationRecorder(observing: [ .credentialMigrated ])
+        
+        let migrator = LegacyOIDC(clientId: "clientId")
+        
+        // Note: This mock file was generated manually using the okta-oidc-ios package, archived, and base64-encoded.
+        let base64Data = try data(from: .module, for: "MockLegacyOIDCKeychainItem.data", in: "MockResponses")
+        let base64String = try XCTUnwrap(String(data: base64Data, encoding: .utf8))
+            .trimmingCharacters(in: .newlines)
+        let oidcData = try XCTUnwrap(Data(base64Encoded: base64String))
+        
+        keychain.expect(noErr, result: [
+            [
                 "svce": "",
+                "acct": "0oathisistheaccount0",
                 "class": "genp",
                 "cdat": Date(),
                 "mdat": Date(),
                 "pdmn": "ak",
-                "agrp": "com.okta.sample.app",
-                "acct": "0oathisistheaccount0",
-                "v_Data": oidcData
-            ] as CFDictionary)
+                "agrp": "com.okta.sample.app"
+            ]
+        ] as CFArray)
 
-            keychain.expect(noErr)
+        keychain.expect(noErr, result: [
+            "svce": "",
+            "class": "genp",
+            "cdat": Date(),
+            "mdat": Date(),
+            "pdmn": "ak",
+            "agrp": "com.okta.sample.app",
+            "acct": "0oathisistheaccount0",
+            "v_Data": oidcData
+        ] as CFDictionary)
+        
+        keychain.expect(noErr)
 
-            XCTAssertNoThrow(try migrator.migrate())
-
-            // Need to wait for the async notification dispatch
-            Thread.sleep(forTimeInterval: 0.02)
-
-            XCTAssertEqual(notificationRecorder.notifications.count, 1)
-
-            let credential = try XCTUnwrap(notificationRecorder.notifications.first?.object as? Credential)
-            XCTAssertEqual(credential.id, "0oathisistheaccount0")
-            XCTAssertEqual(credential.token.refreshToken, "therefreshtoken")
-            XCTAssertEqual(credential.token.context.clientSettings?["redirect_uri"], "com.example:/callback")
-            XCTAssertEqual(credential.token.context.configuration.baseURL.absoluteString, "https://example.com")
-            XCTAssertNotEqual(credential.token.context.configuration.clientId, "0oathisistheaccount0")
-        }
+        XCTAssertNoThrow(try migrator.migrate())
+        
+        XCTAssertEqual(notificationRecorder.notifications.count, 1)
+        
+        let credential = try XCTUnwrap(notificationRecorder.notifications.first?.object as? Credential)
+        XCTAssertEqual(credential.id, "0oathisistheaccount0")
+        XCTAssertEqual(credential.token.refreshToken, "therefreshtoken")
+        XCTAssertEqual(credential.token.context.clientSettings?["redirect_uri"], "com.example:/callback")
+        XCTAssertEqual(credential.token.context.configuration.baseURL.absoluteString, "https://example.com")
+        XCTAssertNotEqual(credential.token.context.configuration.clientId, "0oathisistheaccount0")
     }
 }
 #endif

@@ -12,11 +12,7 @@
 
 import Foundation
 
-#if !COCOAPODS
-import CommonSupport
-#endif
-
-#if canImport(FoundationNetworking)
+#if os(Linux)
 import FoundationNetworking
 #endif
 
@@ -28,57 +24,26 @@ public final class Credential: Equatable, OAuth2ClientDelegate {
     ///
     /// This can be used as a convenience to store a user's token within storage, and to access the user in a safe way. If the user's token isn't stored, this will automatically store the token for later use.
     public static var `default`: Credential? {
-        get {
-            assert(SDKVersion.authFoundation != nil)
-
-            return withIsolationSync { @CredentialActor in
-                TaskData.coordinator.default
-            }
-        }
-        set {
-            assert(SDKVersion.authFoundation != nil)
-
-            withIsolationSync { @CredentialActor in
-                TaskData.coordinator.default = newValue
-            }
-        }
+        get { coordinator.default }
+        set { coordinator.default = newValue }
     }
     
     /// Lists all users currently stored within the user's application.
-    public static var allIDs: [String] {
-        assert(SDKVersion.authFoundation != nil)
-
-        return withIsolationSync { @CredentialActor in
-            TaskData.coordinator.allIDs
-        } ?? []
-    }
-
+    public static var allIDs: [String] { coordinator.allIDs }
+    
     /// The default grace interval used when refreshing tokens using ``Credential/refreshIfNeeded(graceInterval:completion:)`` or ``Credential/refreshIfNeeded(graceInterval:)``.
     ///
     /// This value may still be overridden by supplying an explicit `graceInterval` argument to the above methods.
-    public static var refreshGraceInterval: TimeInterval {
-        get {
-            lock.withLock { _refreshGraceInterval }
-        }
-        set {
-            lock.withLock { _refreshGraceInterval = newValue }
-        }
-    }
-
+    public static var refreshGraceInterval: TimeInterval = 300
+    
     /// Returns the ``Credential`` that matches the given ID.
     /// - Parameters:
     ///   - id: ID for the credential to return.
     ///   - prompt: Optional prompt to show to the user when requesting biometric/Face ID user prompts.
     ///   - authenticationContext: Optional `LAContext` to use when retrieving credentials, on systems that support it.
     /// - Returns: Credential matching the ID.
-    public static func with(id: String, prompt: String? = nil, authenticationContext: (any TokenAuthenticationContext)? = nil) throws -> Credential? {
-        assert(SDKVersion.authFoundation != nil)
-
-        return try withIsolationSyncThrowing { @CredentialActor in
-            try TaskData.coordinator.with(id: id,
-                                          prompt: prompt,
-                                          authenticationContext: authenticationContext)
-        }
+    public static func with(id: String, prompt: String? = nil, authenticationContext: TokenAuthenticationContext? = nil) throws -> Credential? {
+        try coordinator.with(id: id, prompt: prompt, authenticationContext: authenticationContext)
     }
     
     /// Returns a collection of ``Credential`` instances that match the given expression.
@@ -99,14 +64,8 @@ public final class Credential: Equatable, OAuth2ClientDelegate {
     ///   - prompt: Optional prompt to show to the user when requesting biometric/Face ID user prompts.
     ///   - authenticationContext: Optional `LAContext` to use when retrieving credentials, on systems that support it.
     /// - Returns: Collection of credentials that matches the given expression.
-    public static func find(where expression: @Sendable @escaping (Token.Metadata) -> Bool, prompt: String? = nil, authenticationContext: (any TokenAuthenticationContext)? = nil) throws -> [Credential] {
-        assert(SDKVersion.authFoundation != nil)
-
-        return try withIsolationSyncThrowing { @CredentialActor in
-            try TaskData.coordinator.find(where: expression,
-                                          prompt: prompt,
-                                          authenticationContext: authenticationContext)
-        }
+    public static func find(where expression: @escaping (Token.Metadata) -> Bool, prompt: String? = nil, authenticationContext: TokenAuthenticationContext? = nil) throws -> [Credential] {
+        try coordinator.find(where: expression, prompt: prompt, authenticationContext: authenticationContext)
     }
     
     /// Stores the given token for later use.
@@ -127,25 +86,19 @@ public final class Credential: Equatable, OAuth2ClientDelegate {
                              tags: [String: String] = [:],
                              security options: [Security] = Security.standard
     ) throws -> Credential {
-        assert(SDKVersion.authFoundation != nil)
-
-        return try withIsolationSyncThrowing { @CredentialActor in
-            try TaskData.coordinator.store(token: token, tags: tags, security: options)
-        }
+        try coordinator.store(token: token, tags: tags, security: options)
     }
 
     /// Data source used for creating and managing the creation and caching of ``Credential`` instances.
-    @CredentialActor
-    public static var credentialDataSource: any CredentialDataSource {
-        get { TaskData.coordinator.credentialDataSource }
-        set { TaskData.coordinator.credentialDataSource = newValue }
+    public static var credentialDataSource: CredentialDataSource {
+        get { coordinator.credentialDataSource }
+        set { coordinator.credentialDataSource = newValue }
     }
     
     /// Storage instance used to abstract the secure offline storage and retrieval of ``Token`` instances.
-    @CredentialActor
-    public static var tokenStorage: any TokenStorage {
-        get { TaskData.coordinator.tokenStorage }
-        set { TaskData.coordinator.tokenStorage = newValue }
+    public static var tokenStorage: TokenStorage {
+        get { coordinator.tokenStorage }
+        set { coordinator.tokenStorage = newValue }
     }
 
     public static func == (lhs: Credential, rhs: Credential) -> Bool {
@@ -158,7 +111,7 @@ public final class Credential: Equatable, OAuth2ClientDelegate {
     /// The ID the token is identified by within storage.
     ///
     /// This value is automatically generated when the token is stored, and is a way to uniquely identify a token within storage. This value corresponds to the IDs found in the ``allIDs`` static property.
-    public var id: String { token.id }
+    public lazy var id: String = { token.id }()
     
     /// The metadata associated with this credential.
     ///
@@ -166,7 +119,7 @@ public final class Credential: Equatable, OAuth2ClientDelegate {
     ///
     /// > Important: Errors thrown from the setter are silently ignored. If you would like to handle errors when changing metadata, see the ``setTags(_:)`` function.
     public var tags: [String: String] {
-        get { metadata.tags }
+        get { _metadata.tags }
         set {
             try? setTags(newValue)
         }
@@ -175,54 +128,40 @@ public final class Credential: Equatable, OAuth2ClientDelegate {
     /// Updates the metadata associated with this credential.
     ///
     /// This is used internally by the ``tags`` setter, except the use of this function allows you to catch errors.
-    /// - Parameter tags: Metadata tags and values to set.
+    /// - Parameter metadata: Metadata to set.
     public func setTags(_ tags: [String: String]) throws {
         guard let coordinator = coordinator else {
             throw CredentialError.missingCoordinator
         }
      
-        metadata = try withIsolationSyncThrowing { @CredentialActor in
-            let metadata = try Token.Metadata(token: self.token, tags: tags)
-            try coordinator.tokenStorage.setMetadata(metadata)
-            return metadata
-        }
+        let metadata = Token.Metadata(token: token, tags: tags)
+        try coordinator.tokenStorage.setMetadata(metadata)
+
+        _metadata = metadata
     }
     
     /// The token this credential represents.
     public private(set) var token: Token {
-        get {
-            lock.withLock { _token }
-        }
-        set {
-            lock.withLock { _token = newValue }
-            observeToken(newValue)
+        didSet {
+            observeToken(token)
         }
     }
 
     /// The ``UserInfo`` describing this user.
     ///
     /// This value may be nil if the ``userInfo()`` or ``userInfo(completion:)`` methods haven't yet been called.
-    public var userInfo: UserInfo? {
-        userInfoAction.value
-    }
+    public private(set) var userInfo: UserInfo?
     
     /// Indicates this credential's token should automatically be refreshed prior to its expiration.
     ///
     /// This property can be used to ensure a token is available for use, by refreshing the token automatically prior to its expiration. This uses the ``Credential/refreshGraceInterval`` in conjunction with the current ``TimeCoordinator`` instance, to refresh the token before its scheduled expiration.
-    public var automaticRefresh: Bool {
-        get {
-            lock.withLock { _automaticRefresh }
-        }
-        set {
-            lock.withLock {
-                guard _automaticRefresh != newValue else { return }
-                _automaticRefresh = newValue
-
-                if _automaticRefresh {
-                    startAutomaticRefresh()
-                } else {
-                    stopAutomaticRefresh()
-                }
+    public var automaticRefresh: Bool = false {
+        didSet {
+            guard oldValue != automaticRefresh else { return }
+            if automaticRefresh {
+                startAutomaticRefresh()
+            } else {
+                stopAutomaticRefresh()
             }
         }
     }
@@ -238,25 +177,35 @@ public final class Credential: Equatable, OAuth2ClientDelegate {
         guard let coordinator = coordinator else {
             throw CredentialError.missingCoordinator
         }
-
-        try withIsolationSyncThrowing { @CredentialActor in
-            try coordinator.remove(credential: self)
-        }
+     
+        try coordinator.remove(credential: self)
     }
     
     /// Attempt to refresh the token.
-    public func refresh(clientSecret: String, resource: String) async throws {
-        self.token = try await oauth2.refresh(token, clientSecret: clientSecret, resource: resource)
+    /// - Parameter completion: Completion block invoked when a result is returned.
+    public func refresh(clientSecret: String, resource: String, completion: @escaping ((Result<Void, OAuth2Error>) -> Void)) {
+        oauth2.refresh(token, clientSecret: clientSecret, resource: resource) { result in
+            switch result {
+            case .success(let token):
+                self.token = token
+                completion(.success(()))
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
     }
     
     /// Attempt to refresh the token if it either has expired, or is about to expire.
-    /// - Parameters:
-    ///   - graceInterval: The grace interval before a token is due to expire before it should be refreshed.
-    public func refreshIfNeeded(graceInterval: TimeInterval = Credential.refreshGraceInterval) async throws {
+    /// - Parameter completion: Completion block invoked to indicate the status of the token, if the refresh was successful or if an error occurred.
+    public func refreshIfNeeded(graceInterval: TimeInterval = Credential.refreshGraceInterval,
+                                completion: @escaping (Result<Void, OAuth2Error>) -> Void)
+    {
         if let expiresAt = token.expiresAt,
             expiresAt.timeIntervalSinceNow <= graceInterval
         {
-            try await refresh(clientSecret: "", resource: "")
+            refresh(clientSecret: "", resource: "", completion: completion)
+        } else {
+            completion(.success(()))
         }
     }
     
@@ -275,52 +224,66 @@ public final class Credential: Equatable, OAuth2ClientDelegate {
     /// 1. Does not have a refresh token and the ``Token/RevokeType/accessToken`` type is supplied.
     /// - Parameters:
     ///   - type: The token type to revoke, defaulting to `.all`.
-    public func revoke(type: Token.RevokeType = .all) async throws {
-        try await oauth2.revoke(token, type: type)
+    ///   - completion: Completion block called when the operation completes.
+    public func revoke(type: Token.RevokeType = .all, completion: ((Result<Void, OAuth2Error>) -> Void)?) {
+        let shouldRemove = shouldRemove(for: type)
         
-        // Remove the credential from storage if the access token was revoked
-        if let coordinator,
-            shouldRemove(for: type)
-        {
-            try withIsolationSyncThrowing { @CredentialActor in
-                try coordinator.remove(credential: self)
+        oauth2.revoke(token, type: type) { result in
+            // Remove the credential from storage if the access token was revoked
+            if case .success = result,
+               shouldRemove
+            {
+                do {
+                    try self.coordinator?.remove(credential: self)
+                } catch let error as OAuth2Error {
+                    completion?(.failure(error))
+                    return
+                } catch {
+                    completion?(.failure(OAuth2Error.error(error)))
+                    return
+                }
             }
+            
+            completion?(result)
         }
     }
     
     /// Introspect the token to check it for validity, and read the additional information associated with it.
-    /// - Parameters:
-    ///   - type: The token type to introspect.
-    public func introspect(_ type: Token.Kind) async throws -> TokenInfo {
-        try await oauth2.introspect(token: token, type: type)
+    /// - Parameter completion: Completion block invoked when a result is returned.
+    public func introspect(_ type: Token.Kind, completion: @escaping (Result<TokenInfo, OAuth2Error>) -> Void) {
+        oauth2.introspect(token: token, type: type) { result in
+            completion(result)
+        }
     }
 
     /// Fetches the user info for this credential.
     ///
     /// In addition to passing the result to the provided completion block, a successful request will result in the ``Credential/userInfo`` property being set with the new value for later use.
-    /// - Returns: The user info for this user.
-    public func userInfo() async throws -> UserInfo {
-        try await userInfoAction.perform {
-            try await oauth2.userInfo(token: token)
+    /// - Parameter completion: Optional completion block to be invoked when a result is returned.
+    public func userInfo(completion: @escaping (Result<UserInfo, OAuth2Error>) -> Void) {
+        oauth2.userInfo(token: token) { result in
+            defer { completion(result) }
+            
+            if case let .success(userInfo) = result {
+                self.userInfo = userInfo
+            }
         }
     }
 
     /// Initializer that creates a credential for the supplied token.
     /// - Parameter token: Token to create a credential for.
-    @CredentialActor
     public convenience init(token: Token) {
-        let urlSession = Self.credentialDataSource.urlSession(for: token)
+        let urlSession = type(of: self).credentialDataSource.urlSession(for: token)
         self.init(token: token,
                   oauth2: OAuth2Client(token.context.configuration,
                                        session: urlSession),
-                  coordinator: TaskData.coordinator)
+                  coordinator: Credential.coordinator)
     }
     
     /// Initializer that creates a credential for a given token, using a custom OAuth2Client instance.
     /// - Parameters:
     ///   - token: Token
     ///   - client: Client instance.
-    @CredentialActor
     public convenience init(token: Token, oauth2 client: OAuth2Client) throws {
         guard token.context.configuration.clientId == client.configuration.clientId,
               token.context.configuration.baseURL == client.configuration.baseURL
@@ -330,21 +293,24 @@ public final class Credential: Equatable, OAuth2ClientDelegate {
         
         self.init(token: token,
                   oauth2: client,
-                  coordinator: TaskData.coordinator)
+                  coordinator: Credential.coordinator)
     }
     
-    init(token: Token, oauth2 client: OAuth2Client, coordinator: any CredentialCoordinator) {
-        self._token = token
+    init(token: Token, oauth2 client: OAuth2Client, coordinator: CredentialCoordinator) {
+        self.token = token
         self.oauth2 = client
         self.coordinator = coordinator
 
         self.oauth2.add(delegate: self)
-        observeToken(_token)
+        observeToken(token)
     }
 
     deinit {
         stopAutomaticRefresh()
-        unobserveToken()
+
+        if let tokenObserver = tokenObserver {
+            NotificationCenter.default.removeObserver(tokenObserver)
+        }
     }
     
     // MARK: OAuth2ClientDelegate
@@ -359,134 +325,49 @@ public final class Credential: Equatable, OAuth2ClientDelegate {
     }
     
     // MARK: Private properties
-    nonisolated(unsafe) weak var coordinator: (any CredentialCoordinator)?
+    static let coordinator = CredentialCoordinatorImpl()
+    weak var coordinator: CredentialCoordinator?
 
-    @CredentialActor
-    static func resetToDefault() {
-        TaskData.coordinator.resetToDefault()
-    }
-
-    nonisolated(unsafe) private var _token: Token
-    let userInfoAction = CoalescedResult<UserInfo>(taskName: "UserInfo")
-    let lock = Lock()
-
-    private static let lock = Lock()
-    nonisolated(unsafe) private static var _refreshGraceInterval: TimeInterval = 300
-
-    nonisolated(unsafe) private var _metadata: Token.Metadata?
-    var metadata: Token.Metadata {
-        get {
-            lock.withLock {
-                if let metadata = _metadata {
-                    return metadata
-                }
-
-                let result: Token.Metadata
-
-                let id = id
-                if let coordinator,
-                   let metadata = withIsolationSync({
-                       try? await coordinator.tokenStorage.metadata(for: id)
-                   })
-                {
-                    result = metadata
-                } else {
-                    result = Token.Metadata(id: id)
-                }
-
-                _metadata = result
-                return result
-            }
+    private lazy var _metadata: Token.Metadata = {
+        if let metadata = try? coordinator?.tokenStorage.metadata(for: token.id) {
+            return metadata
         }
-        set {
-            lock.withLock {
-                _metadata = newValue
-            }
-        }
-    }
-
-    nonisolated(unsafe) private var _automaticRefresh: Bool = false
-    nonisolated(unsafe) private(set) var _automaticRefreshTimer: (any DispatchSourceTimer)?
-    nonisolated(unsafe) private var _automaticRefreshTask: Task<Void, Never>?
-
+        
+        return Token.Metadata(id: id)
+    }()
+    
+    internal private(set) var automaticRefreshTimer: DispatchSourceTimer?
     private func startAutomaticRefresh() {
-        guard let expiresAt = _token.expiresAt
-        else {
-            return
-        }
-        let graceInterval = Credential.refreshGraceInterval
-        let timeOffset = max(0.0, expiresAt.timeIntervalSinceNow - Date.nowCoordinated.timeIntervalSinceNow - graceInterval)
-        let repeatInterval = min(_token.expiresIn - graceInterval, _token.expiresIn)
+        guard let timerSource = createAutomaticRefreshTimer() else { return }
 
-        _automaticRefreshTask = Task(priority: .userInitiated) {
-            if timeOffset > 0 {
-                do {
-                    try await Task.sleep(delay: timeOffset)
-                } catch is CancellationError {
-                    lock.withLock {
-                        _automaticRefreshTask = nil
-                    }
-                    return
-                } catch {
-                    print("Error during automatic refresh: \(error)")
-                }
-            }
-
-            repeat {
-                do {
-                    try await refreshIfNeeded()
-                    try await Task.sleep(delay: repeatInterval)
-                } catch is CancellationError {
-                    lock.withLock {
-                        _automaticRefreshTask = nil
-                    }
-                } catch {
-                    print("Error during automatic refresh: \(error)")
-                }
-            } while !Task.isCancelled
-        }
+        automaticRefreshTimer?.cancel()
+        automaticRefreshTimer = timerSource
+        timerSource.resume()
+    }
+    
+    func stopAutomaticRefresh() {
+        automaticRefreshTimer?.cancel()
+        automaticRefreshTimer = nil
     }
 
-    private func stopAutomaticRefresh() {
-        _automaticRefreshTask?.cancel()
-        _automaticRefreshTask = nil
-    }
-
-    nonisolated(unsafe) private var _tokenObserver: (any NSObjectProtocol)?
+    private var tokenObserver: NSObjectProtocol?
     private func observeToken(_ token: Token) {
-        lock.withLock {
-            if let tokenObserver = _tokenObserver {
-                TaskData.notificationCenter.removeObserver(tokenObserver)
-            }
-
-            _tokenObserver = TaskData.notificationCenter.addObserver(forName: .tokenRefreshFailed,
-                                                                     object: nil,
-                                                                     queue: nil) { [weak self] notification in
-                guard let self = self,
-                      token == self.token
-                else {
-                    return
-                }
-
-                TaskData.notificationCenter.post(name: .credentialRefreshFailed,
-                                                 object: self,
-                                                 userInfo: notification.userInfo)
-            }
+        if let tokenObserver = tokenObserver {
+            NotificationCenter.default.removeObserver(tokenObserver)
         }
-    }
 
-    private func unobserveToken() {
-        lock.withLock {
-            if let tokenObserver = _tokenObserver {
-                TaskData.notificationCenter.removeObserver(tokenObserver)
+        tokenObserver = NotificationCenter.default.addObserver(forName: .tokenRefreshFailed,
+                                                               object: token,
+                                                               queue: nil) { [weak self] notification in
+            guard let self = self,
+                  token == self.token
+            else {
+                return
             }
+            
+            NotificationCenter.default.post(name: .credentialRefreshFailed,
+                                            object: self,
+                                            userInfo: notification.userInfo)
         }
     }
 }
-
-// Work around a bug in Swift 5.10 that ignores `nonisolated(unsafe)` on mutable stored properties.
-#if swift(<6.0)
-extension Credential: @unchecked Sendable {}
-#else
-extension Credential: Sendable {}
-#endif

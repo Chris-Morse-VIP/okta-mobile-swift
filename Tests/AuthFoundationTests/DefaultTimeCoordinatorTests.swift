@@ -14,10 +14,6 @@ import XCTest
 @testable import AuthFoundation
 @testable import TestCommon
 
-#if canImport(FoundationNetworking)
-import FoundationNetworking
-#endif
-
 final class DefaultTimeCoordinatorTests: XCTestCase {
     var coordinator: DefaultTimeCoordinator!
     var client: MockApiClient!
@@ -29,9 +25,9 @@ final class DefaultTimeCoordinatorTests: XCTestCase {
         coordinator = DefaultTimeCoordinator()
         Date.coordinator = coordinator
 
-        configuration = OAuth2Client.Configuration(issuerURL: baseUrl,
+        configuration = OAuth2Client.Configuration(baseURL: baseUrl,
                                                    clientId: "clientid",
-                                                   scope: "openid")
+                                                   scopes: "openid")
         client = MockApiClient(configuration: configuration,
                                session: urlSession,
                                baseURL: baseUrl)

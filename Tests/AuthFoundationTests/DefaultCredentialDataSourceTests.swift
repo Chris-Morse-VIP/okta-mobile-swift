@@ -19,17 +19,12 @@ class CredentialDataSourceDelegateRecorder: CredentialDataSourceDelegate {
     private(set) var removed: [Credential] = []
     private(set) var callCount = 0
 
-    // Explicitly mark init() as nonisolated since Swift 5.10 is not able
-    // to properly infer this behavior when a non-actor type conforms to
-    // a global-actor protocol.
-    nonisolated init() {}
-
-    func credential(dataSource: any CredentialDataSource, created credential: Credential) {
+    func credential(dataSource: CredentialDataSource, created credential: Credential) {
         created.append(credential)
         callCount += 1
     }
     
-    func credential(dataSource: any CredentialDataSource, removed credential: Credential) {
+    func credential(dataSource: CredentialDataSource, removed credential: Credential) {
         removed.append(credential)
         callCount += 1
     }
@@ -42,54 +37,43 @@ class CredentialDataSourceDelegateRecorder: CredentialDataSourceDelegate {
 }
 
 final class DefaultCredentialDataSourceTests: XCTestCase {
+    var coordinator: MockCredentialCoordinator!
+    var dataSource: DefaultCredentialDataSource!
     var delegate: CredentialDataSourceDelegateRecorder!
 
-    let configuration = OAuth2Client.Configuration(issuerURL: URL(string: "https://example.com")!,
+    let configuration = OAuth2Client.Configuration(baseURL: URL(string: "https://example.com")!,
                                                    clientId: "clientid",
-                                                   scope: "openid")
+                                                   scopes: "openid")
     
-    override func setUp() async throws {
+
+    override func setUpWithError() throws {
+        coordinator = MockCredentialCoordinator()
         delegate = CredentialDataSourceDelegateRecorder()
+        dataSource = DefaultCredentialDataSource()
+        dataSource.delegate = delegate
+        coordinator.credentialDataSource = dataSource
     }
-
-    override func tearDown() async throws {
+    
+    override func tearDownWithError() throws {
+        coordinator = nil
         delegate = nil
+        dataSource = nil
     }
-
-    @CredentialActor
-    final class StorageContext {
-        let coordinator: MockCredentialCoordinator
-        let dataSource: DefaultCredentialDataSource
-
-        init(delegate: any CredentialDataSourceDelegate) {
-            coordinator = MockCredentialCoordinator()
-            dataSource = DefaultCredentialDataSource()
-            
-            coordinator.credentialDataSource = dataSource
-            dataSource.delegate = delegate
-        }
-    }
-
-    @CredentialActor
-    func testCredentials() async throws {
-        let context = StorageContext(delegate: delegate)
-        let dataSource = context.dataSource
-        let coordinator = context.coordinator
-
-
+    
+    func testCredentials() throws {
         XCTAssertEqual(dataSource.credentialCount, 0)
         
-        let token = try! Token(id: "TokenId",
-                               issuedAt: Date(),
-                               tokenType: "Bearer",
-                               expiresIn: 300,
-                               accessToken: "abcd123",
-                               scope: "openid",
-                               refreshToken: nil,
-                               idToken: nil,
-                               deviceSecret: nil,
-                               context: Token.Context(configuration: configuration,
-                                                      clientSettings: nil))
+        let token = Token(id: "TokenId",
+                          issuedAt: Date(),
+                          tokenType: "Bearer",
+                          expiresIn: 300,
+                          accessToken: "abcd123",
+                          scope: "openid",
+                          refreshToken: nil,
+                          idToken: nil,
+                          deviceSecret: nil,
+                          context: Token.Context(configuration: configuration,
+                                                 clientSettings: nil))
         
         XCTAssertFalse(dataSource.hasCredential(for: token))
         

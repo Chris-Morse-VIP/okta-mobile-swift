@@ -12,14 +12,11 @@
 
 import Foundation
 
+#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
 #if canImport(LocalAuthentication) && !os(tvOS)
 import LocalAuthentication
 #else
 typealias LAContext = Void
-#endif
-
-#if swift(<6.0)
-extension UserDefaults: @unchecked Sendable {}
 #endif
 
 private struct UserDefaultsKeys {
@@ -28,11 +25,10 @@ private struct UserDefaultsKeys {
     static let allTokensKey = "com.okta.authfoundation.allTokens"
 }
 
-@CredentialActor
 final class UserDefaultsTokenStorage: TokenStorage {
     private let userDefaults: UserDefaults
     
-    weak var delegate: (any TokenStorageDelegate)?
+    weak var delegate: TokenStorageDelegate?
     
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
@@ -80,7 +76,7 @@ final class UserDefaultsTokenStorage: TokenStorage {
         Array(allTokens.keys)
     }
     
-    func get(token id: String, prompt: String? = nil, authenticationContext: (any TokenAuthenticationContext)? = nil) throws -> Token {
+    func get(token id: String, prompt: String? = nil, authenticationContext: TokenAuthenticationContext? = nil) throws -> Token {
         guard let token = allTokens[id] else {
             throw TokenError.tokenNotFound(id: id)
         }
@@ -88,14 +84,8 @@ final class UserDefaultsTokenStorage: TokenStorage {
         return token
     }
     
-    func add(token: Token, metadata tokenMetadata: Token.Metadata?, security: [Credential.Security]) throws {
-        let metadata: Token.Metadata
-        if let tokenMetadata {
-            metadata = tokenMetadata
-        } else {
-            metadata = try Token.Metadata(token: token, tags: [:])
-        }
-        
+    func add(token: Token, metadata: Token.Metadata?, security: [Credential.Security]) throws {
+        let metadata = metadata ?? Token.Metadata(token: token, tags: [:])
         guard token.id == metadata.id else {
             throw CredentialError.metadataConsistency
         }
@@ -171,3 +161,4 @@ final class UserDefaultsTokenStorage: TokenStorage {
         userDefaults.synchronize()
     }
 }
+#endif

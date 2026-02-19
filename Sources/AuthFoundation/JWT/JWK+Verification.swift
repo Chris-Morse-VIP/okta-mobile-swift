@@ -31,18 +31,53 @@ extension JWK {
             throw JWTError.badTokenStructure
         }
 
-        guard let algorithm = algorithm.secKeyAlgorithm
-        else {
-            throw JWTError.invalidSigningAlgorithm
+        if #available(iOS 10.0, macCatalyst 13.0, tvOS 10.0, watchOS 3.0, macOS 10.12, *) {
+            guard let algorithm = algorithm.secKeyAlgorithm
+            else {
+                throw JWTError.invalidSigningAlgorithm
+            }
+            
+            return SecKeyVerifySignature(publicKey,
+                                         algorithm,
+                                         data as NSData,
+                                         signature as NSData,
+                                         nil)
         }
-
-        return SecKeyVerifySignature(publicKey,
-                                     algorithm,
-                                     data as NSData,
-                                     signature as NSData,
-                                     nil)
-        #else
-        throw JWTError.signatureVerificationUnavailable
+        
+        #if os(iOS) || os(tvOS) || os(watchOS)
+        if #available(iOS 2.0, macCatalyst 13.0, tvOS 9.0, watchOS 2.0, *) {
+            guard let padding = algorithm.secPadding,
+                  let digest = algorithm.digest(data: data)
+            else {
+                throw JWTError.invalidSigningAlgorithm
+            }
+            
+            var status: OSStatus = noErr
+            digest.withUnsafeBytes { (digestBytes: UnsafeRawBufferPointer) in
+                signature.withUnsafeBytes { (signatureBytes: UnsafeRawBufferPointer) in
+                    // swiftlint:disable force_unwrapping
+                    let digestPtr = digestBytes.baseAddress!.assumingMemoryBound(to: UInt8.self)
+                    let signaturePtr = signatureBytes.baseAddress!.assumingMemoryBound(to: UInt8.self)
+                    // swiftlint:enable force_unwrapping
+                    status = SecKeyRawVerify(publicKey,
+                                             padding,
+                                             digestPtr,
+                                             digest.count,
+                                             signaturePtr,
+                                             signature.count)
+                }
+            }
+            
+            switch status {
+            case noErr:
+                return true
+            default:
+                return false
+            }
+        }
         #endif
+        #endif
+        
+        throw JWTError.signatureVerificationUnavailable
     }
 }

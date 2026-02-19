@@ -12,7 +12,7 @@
 
 import Foundation
 
-#if os(Linux) || os(Android)
+#if os(Linux)
 public typealias OSStatus = Int32
 #endif
 

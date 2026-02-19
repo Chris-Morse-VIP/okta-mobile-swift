@@ -32,7 +32,7 @@ final class ErrorTests: XCTestCase {
     func testAPIClientError() {
         XCTAssertNotEqual(APIClientError.invalidUrl.errorDescription,
                           "invalid_url_description")
-        XCTAssertNotEqual(APIClientError.missingResponse().errorDescription,
+        XCTAssertNotEqual(APIClientError.missingResponse.errorDescription,
                           "missing_response_description")
         XCTAssertNotEqual(APIClientError.invalidResponse.errorDescription,
                           "invalid_response_description")
@@ -50,16 +50,16 @@ final class ErrorTests: XCTestCase {
         XCTAssertNotEqual(APIClientError.unsupportedContentType(.json).errorDescription,
                           "unsupported_content_type_description")
         
-        XCTAssertNotEqual(APIClientError.httpError(TestUnlocalizedError.nestedError).errorDescription,
-                          "http_error_description")
-        XCTAssertEqual(APIClientError.httpError(TestLocalizedError.nestedError).errorDescription,
+        XCTAssertNotEqual(APIClientError.serverError(TestUnlocalizedError.nestedError).errorDescription,
+                          "server_error_description")
+        XCTAssertEqual(APIClientError.serverError(TestLocalizedError.nestedError).errorDescription,
                        "Nested Error")
 
         XCTAssertNotEqual(APIClientError.statusCode(404).errorDescription,
                           "status_code_description")
         
         XCTAssertNotEqual(APIClientError.validation(error: TestUnlocalizedError.nestedError).errorDescription,
-                          "http_error_description")
+                          "server_error_description")
         XCTAssertEqual(APIClientError.validation(error: TestLocalizedError.nestedError).errorDescription,
                        "Nested Error")
     }
@@ -74,11 +74,11 @@ final class ErrorTests: XCTestCase {
         XCTAssertNotEqual(OAuth2Error.signatureInvalid.errorDescription,
                           "signature_invalid_description")
         
-        XCTAssertEqual(OAuth2Error.network(error: APIClientError.httpError(TestLocalizedError.nestedError)).errorDescription,
+        XCTAssertEqual(OAuth2Error.network(error: APIClientError.serverError(TestLocalizedError.nestedError)).errorDescription,
                           "Nested Error")
 
-        XCTAssertTrue(OAuth2Error.server(error: .init(code: "123", description: "AuthError")).errorDescription?.contains("AuthError") ?? false)
-        XCTAssertNotEqual(OAuth2Error.server(error: .init(code: "123", description: nil)).errorDescription,
+        XCTAssertTrue(OAuth2Error.oauth2Error(code: "123", description: "AuthError").errorDescription?.contains("AuthError") ?? false)
+        XCTAssertNotEqual(OAuth2Error.oauth2Error(code: "123", description: nil).errorDescription,
                           "oauth2_error_code_description")
 
         XCTAssertNotEqual(OAuth2Error.missingToken(type: .accessToken).errorDescription,
@@ -93,7 +93,7 @@ final class ErrorTests: XCTestCase {
                        "Nested Error")
     }
     
-    #if os(iOS) || os(macOS) || os(tvOS) || os(watchOS) || (swift(>=5.10) && os(visionOS))
+    #if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
     func testKeychainError() {
         XCTAssertNotEqual(KeychainError.cannotGet(code: noErr).errorDescription,
                           "keychain_cannot_get")
@@ -159,62 +159,6 @@ final class ErrorTests: XCTestCase {
         XCTAssertNotEqual(JWTError.unsupportedAlgorithm(.es384).errorDescription,
                           "jwt_unsupported_algorithm")
     }
-    
-    func testClaimError() {
-        XCTAssertNotEqual(ClaimError.missingRequiredValue(key: "meow").errorDescription,
-                          "claim.missing_required_value")
-        XCTAssertTrue(ClaimError.missingRequiredValue(key: "meow").errorDescription?.localizedStandardContains("meow") ?? false)
-    }
-    
-    func testCredentialError() {
-        XCTAssertNotEqual(CredentialError.missingCoordinator.errorDescription,
-                          "credential.missing_coordinator")
-        XCTAssertNotEqual(CredentialError.incorrectClientConfiguration.errorDescription,
-                          "credential.incorrect_configuration")
-        XCTAssertNotEqual(CredentialError.metadataConsistency.errorDescription,
-                          "credential.metadata_consistency")
-    }
-
-    func testPropertyListConfigurationError() {
-        typealias PlistError = OAuth2Client.PropertyListConfigurationError
-        XCTAssertNotEqual(PlistError.defaultPropertyListNotFound.errorDescription,
-                          "plist_configuration.default_not_found")
-        XCTAssertNotEqual(PlistError.invalidPropertyList(url: URL(string: "urn://foo/bar")!).errorDescription,
-                          "plist_configuration.invalid_property_list")
-        XCTAssertNotEqual(PlistError.cannotParsePropertyList(nil).errorDescription,
-                          "plist_configuration.cannot_parse_message")
-        XCTAssertNotEqual(PlistError.missingConfigurationValues.errorDescription,
-                          "plist_configuration.missing_configuration_values")
-        XCTAssertNotEqual(PlistError.invalidConfiguration(name: "foo", value: "value").errorDescription,
-                          "plist_configuration.invalid_configuration")
-
-        XCTAssertTrue(PlistError.invalidPropertyList(url: URL(string: "urn://foo/bar")!)
-            .errorDescription?
-            .localizedStandardContains("bar") ?? false)
-        XCTAssertTrue(PlistError.cannotParsePropertyList(TestLocalizedError.nestedError)
-            .errorDescription?
-            .localizedStandardContains("Nested Error") ?? false)
-        XCTAssertTrue(PlistError.invalidConfiguration(name: "foo", value: "bar")
-            .errorDescription?
-            .localizedStandardContains("foo") ?? false)
-        XCTAssertTrue(PlistError.invalidConfiguration(name: "foo", value: "bar")
-            .errorDescription?
-            .localizedStandardContains("bar") ?? false)
-    }
-    
-    func testTokenError() {
-        XCTAssertNotEqual(TokenError.contextMissing.errorDescription,
-                          "token_error.context_missing")
-        XCTAssertNotEqual(TokenError.tokenNotFound(id: "foo").errorDescription,
-                          "token_error.not_found")
-        XCTAssertNotEqual(TokenError.cannotReplaceToken.errorDescription,
-                          "token_error.cannot_replace")
-        XCTAssertNotEqual(TokenError.duplicateTokenAdded.errorDescription,
-                          "token_error.duplicate_added")
-        XCTAssertNotEqual(TokenError.invalidConfiguration.errorDescription,
-                          "token_error.invalid_configuration")
-
-    }
 
     func testOktaAPIError() throws {
         let json = """
@@ -226,7 +170,7 @@ final class ErrorTests: XCTestCase {
                 "errorCauses": ["Cause"]
             }
         """.data(using: .utf8)!
-        let error = try defaultJSONDecoder().decode(OktaAPIError.self, from: json)
+        let error = try defaultJSONDecoder.decode(OktaAPIError.self, from: json)
         XCTAssertEqual(error.code, "Error")
         XCTAssertEqual(error.summary, "Summary")
         XCTAssertEqual(error.link, "Link")
@@ -238,13 +182,13 @@ final class ErrorTests: XCTestCase {
         let json = """
             {
                 "error": "invalid_request",
-                "error_description": "Description"
+                "errorDescription": "Description"
             }
         """.data(using: .utf8)!
-        let error = try defaultJSONDecoder().decode(OAuth2ServerError.self, from: json)
+        let error = try defaultJSONDecoder.decode(OAuth2ServerError.self, from: json)
         XCTAssertEqual(error.code, .invalidRequest)
         XCTAssertEqual(error.description, "Description")
-        XCTAssertEqual(error.errorDescription, "Authentication error: Description (invalid_request).")
+        XCTAssertEqual(error.errorDescription, "Description")
     }
     
     func testOAuth2ServerErrorCodes() {

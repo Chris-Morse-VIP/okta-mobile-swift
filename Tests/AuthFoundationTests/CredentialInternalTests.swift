@@ -15,9 +15,17 @@ import XCTest
 @testable import AuthFoundation
 
 final class CredentialInternalTests: XCTestCase {
-    @CredentialActor
-    func testShouldRemoveWithOnlyAccessToken() async throws {
-        let coordinator = MockCredentialCoordinator()
+    var coordinator: MockCredentialCoordinator!
+
+    override func setUpWithError() throws {
+        coordinator = MockCredentialCoordinator()
+    }
+    
+    override func tearDownWithError() throws {
+        coordinator = nil
+    }
+
+    func testShouldRemoveWithOnlyAccessToken() throws {
         let credential = coordinator.credential(with: [])
         XCTAssertTrue(credential.shouldRemove(for: .all))
         XCTAssertTrue(credential.shouldRemove(for: .accessToken))
@@ -25,9 +33,7 @@ final class CredentialInternalTests: XCTestCase {
         XCTAssertFalse(credential.shouldRemove(for: .deviceSecret))
     }
 
-    @CredentialActor
-    func testShouldRemoveWithAccessAndRefreshToken() async throws {
-        let coordinator = MockCredentialCoordinator()
+    func testShouldRemoveWithAccessAndRefreshToken() throws {
         let credential = coordinator.credential(with: [.refreshToken])
         XCTAssertTrue(credential.shouldRemove(for: .all))
         XCTAssertFalse(credential.shouldRemove(for: .accessToken))
@@ -35,9 +41,7 @@ final class CredentialInternalTests: XCTestCase {
         XCTAssertFalse(credential.shouldRemove(for: .deviceSecret))
     }
 
-    @CredentialActor
-    func testShouldRemoveWithAccessAndDeviceToken() async throws {
-        let coordinator = MockCredentialCoordinator()
+    func testShouldRemoveWithAccessAndDeviceToken() throws {
         let credential = coordinator.credential(with: [.deviceSecret])
         XCTAssertTrue(credential.shouldRemove(for: .all))
         XCTAssertTrue(credential.shouldRemove(for: .accessToken))
@@ -45,9 +49,7 @@ final class CredentialInternalTests: XCTestCase {
         XCTAssertFalse(credential.shouldRemove(for: .deviceSecret))
     }
 
-    @CredentialActor
-    func testShouldRemoveWithAccessRefreshAndDeviceToken() async throws {
-        let coordinator = MockCredentialCoordinator()
+    func testShouldRemoveWithAccessRefreshAndDeviceToken() throws {
         let credential = coordinator.credential(with: [.refreshToken, .deviceSecret])
         XCTAssertTrue(credential.shouldRemove(for: .all))
         XCTAssertFalse(credential.shouldRemove(for: .accessToken))

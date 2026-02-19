@@ -13,23 +13,16 @@
 import Foundation
 @testable import AuthFoundation
 
-#if canImport(FoundationNetworking)
-import FoundationNetworking
-#endif
-
-class MockApiClient: APIClient, @unchecked Sendable {
+class MockApiClient: APIClient {
     var baseURL: URL
-    var session: any URLSessionProtocol
-    let configuration: any APIClientConfiguration
+    var session: URLSessionProtocol
+    let configuration: APIClientConfiguration
     let shouldRetry: APIRetry?
-    var allRequests: [URLRequest] = []
-    var request: URLRequest? {
-        allRequests.last
-    }
-    var delegate: (any APIClientDelegate)?
+    var request: URLRequest?
+    var delegate: APIClientDelegate?
     
-    init(configuration: any APIClientConfiguration,
-         session: any URLSessionProtocol,
+    init(configuration: APIClientConfiguration,
+         session: URLSessionProtocol,
          baseURL: URL,
          shouldRetry: APIRetry? = nil) {
         self.configuration = configuration
@@ -38,17 +31,17 @@ class MockApiClient: APIClient, @unchecked Sendable {
         self.shouldRetry = shouldRetry
     }
     
-    func decode<T>(_ type: T.Type, from data: Data, parsing context: (any APIParsingContext)?) throws -> T where T : Decodable {
-        var info: [CodingUserInfoKey: any Sendable] = context?.codingUserInfo as? [CodingUserInfoKey: any Sendable] ?? [:]
+    func decode<T>(_ type: T.Type, from data: Data, userInfo: [CodingUserInfoKey : Any]?) throws -> T where T : Decodable {
+        var info: [CodingUserInfoKey: Any] = userInfo ?? [:]
         if info[.apiClientConfiguration] == nil {
             info[.apiClientConfiguration] = configuration
         }
         
         let jsonDecoder: JSONDecoder
-        if let jsonType = type as? any JSONDecodable.Type {
+        if let jsonType = type as? JSONDecodable.Type {
             jsonDecoder = jsonType.jsonDecoder
         } else {
-            jsonDecoder = defaultJSONDecoder()
+            jsonDecoder = defaultJSONDecoder
         }
         
         jsonDecoder.userInfo = info
@@ -57,11 +50,12 @@ class MockApiClient: APIClient, @unchecked Sendable {
     }
     
     func didSend(request: URLRequest, received error: AuthFoundation.APIClientError, requestId: String?, rateLimit: AuthFoundation.APIRateLimit?) {
-        allRequests.append(request)
+        self.request = request
         delegate?.api(client: self, didSend: request, received: error, requestId: nil, rateLimit: nil)
     }
     
     func willSend(request: inout URLRequest) {
+        self.request = request
         delegate?.api(client: self, willSend: &request)
     }
     

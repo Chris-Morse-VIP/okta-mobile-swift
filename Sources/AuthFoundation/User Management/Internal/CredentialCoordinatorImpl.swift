@@ -12,70 +12,28 @@
 
 import Foundation
 
-#if !COCOAPODS
-import CommonSupport
-#endif
-
-#if canImport(FoundationNetworking)
+#if os(Linux)
 import FoundationNetworking
 #endif
 
 final class CredentialCoordinatorImpl: CredentialCoordinator {
-    private var _credentialDataSource: (any CredentialDataSource)?
-    private var _tokenStorage: (any TokenStorage)?
-
-    nonisolated init() {}
-
-    @CredentialActor
-    var credentialDataSource: any CredentialDataSource {
-        get {
-            if let credentialDataSource = _credentialDataSource {
-                return credentialDataSource
-            }
-
-            let result = Self.defaultCredentialDataSource()
-            _credentialDataSource = result
-            _credentialDataSource?.delegate = self
-            return result
-        }
-        set {
-            _credentialDataSource = newValue
-            _credentialDataSource?.delegate = self
+    var credentialDataSource: CredentialDataSource {
+        didSet {
+            credentialDataSource.delegate = self
         }
     }
-
-    @CredentialActor
-    var tokenStorage: any TokenStorage {
-        get {
-            if let tokenStorage = _tokenStorage {
-                return tokenStorage
-            }
-
-            let result = Self.defaultTokenStorage()
-            _tokenStorage = result
-            _tokenStorage?.delegate = self
-            return result
-        }
-        set {
-            _tokenStorage = newValue
-            _tokenStorage?.delegate = self
-            _default = _fetchDefaultCredential()
+    
+    var tokenStorage: TokenStorage {
+        didSet {
+            tokenStorage.delegate = self
+            
+            _default = try? CredentialCoordinatorImpl.defaultCredential(
+                tokenStorage: tokenStorage,
+                credentialDataSource: credentialDataSource,
+                coordinator: self)
         }
     }
-
-    private func _fetchDefaultCredential() -> Credential? {
-        guard let tokenStorage = _tokenStorage,
-              let credentialDataSource = _credentialDataSource
-        else {
-            return nil
-        }
-
-        return try? CredentialCoordinatorImpl.defaultCredential(
-            tokenStorage: tokenStorage,
-            credentialDataSource: credentialDataSource,
-            coordinator: self)
-    }
-
+        
     private lazy var _default: Credential? = {
         do {
             return try CredentialCoordinatorImpl.defaultCredential(
@@ -87,33 +45,22 @@ final class CredentialCoordinatorImpl: CredentialCoordinator {
             return nil
         }
     }()
-
-    @CredentialActor
     var `default`: Credential? {
         get { _default }
         set {
-            do {
-                if let token = newValue?.token,
-                   !tokenStorage.allIDs.contains(token.id)
-                {
-                    try tokenStorage.add(token: token,
-                                         metadata: Token.Metadata(id: token.id),
-                                         security: Credential.Security.standard)
-                }
-
-                try tokenStorage.setDefaultTokenID(newValue?.id)
-            } catch {
-                print("Could not set a new default credential: \(error)")
+            if let token = newValue?.token {
+                try? tokenStorage.add(token: token,
+                                      metadata: Token.Metadata(id: token.id),
+                                      security: Credential.Security.standard)
             }
+            try? tokenStorage.setDefaultTokenID(newValue?.id)
         }
     }
     
-    @CredentialActor
     public var allIDs: [String] {
         tokenStorage.allIDs
     }
     
-    @CredentialActor
     func store(token: Token, tags: [String: String], security: [Credential.Security]) throws -> Credential {
         try tokenStorage.add(token: token,
                              metadata: Token.Metadata(token: token,
@@ -122,18 +69,16 @@ final class CredentialCoordinatorImpl: CredentialCoordinator {
         return credentialDataSource.credential(for: token, coordinator: self)
     }
     
-    @CredentialActor
-    func with(id: String, prompt: String?, authenticationContext: (any TokenAuthenticationContext)?) throws -> Credential? {
+    func with(id: String, prompt: String?, authenticationContext: TokenAuthenticationContext?) throws -> Credential? {
         credentialDataSource.credential(for: try tokenStorage.get(token: id,
                                                                   prompt: prompt,
                                                                   authenticationContext: authenticationContext),
                                         coordinator: self)
     }
     
-    @CredentialActor
-    func find(where expression: @Sendable @escaping (Token.Metadata) -> Bool,
+    func find(where expression: @escaping (Token.Metadata) -> Bool,
               prompt: String? = nil,
-              authenticationContext: (any TokenAuthenticationContext)? = nil) throws -> [Credential]
+              authenticationContext: TokenAuthenticationContext? = nil) throws -> [Credential]
     {
         try allIDs
             .map(tokenStorage.metadata(for:))
@@ -143,42 +88,29 @@ final class CredentialCoordinatorImpl: CredentialCoordinator {
             })
     }
     
-    @CredentialActor
     func remove(credential: Credential) throws {
         credentialDataSource.remove(credential: credential)
         try tokenStorage.remove(id: credential.id)
     }
     
-    /// Defer the execution of a block to the main thread.
-    ///
-    /// This triggers two nested Task operations, one within the ``CredentialActor``, and the second within the `MainActor`. The goal of this is to serialize external communications (e.g. notifications) to ensure any local tasks being performed by the credential coordinator can complete, and that consumers of the resulting call will receive them on the main thread.
-    /// - Parameter notification: Notification to post
-    private func deferToMainActor(_ block: @Sendable @escaping () -> Void) {
-        Task { @CredentialActor in
-            Task { @MainActor in
-                block()
-            }
-        }
-    }
-
-    static func defaultTokenStorage() -> any TokenStorage {
-        #if os(iOS) || os(macOS) || os(tvOS) || os(watchOS) || (swift(>=5.10) && os(visionOS))
+    static func defaultTokenStorage() -> TokenStorage {
+        #if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
         KeychainTokenStorage()
         #else
         UserDefaultsTokenStorage()
         #endif
     }
     
-    static func defaultCredentialDataSource() -> any CredentialDataSource {
+    static func defaultCredentialDataSource() -> CredentialDataSource {
         DefaultCredentialDataSource()
     }
     
-    static func defaultCredential(tokenStorage: any TokenStorage,
-                                  credentialDataSource: any CredentialDataSource,
-                                  coordinator: any CredentialCoordinator) throws -> Credential?
+    static func defaultCredential(tokenStorage: TokenStorage,
+                                  credentialDataSource: CredentialDataSource,
+                                  coordinator: CredentialCoordinator) throws -> Credential?
     {
         if let defaultTokenId = tokenStorage.defaultTokenID {
-            var context: (any TokenAuthenticationContext)?
+            var context: TokenAuthenticationContext?
             #if canImport(LocalAuthentication) && !os(tvOS)
             context = Credential.Security.standard.context
             #endif
@@ -190,38 +122,38 @@ final class CredentialCoordinatorImpl: CredentialCoordinator {
         }
         return nil
     }
+    
+    init(tokenStorage: TokenStorage = defaultTokenStorage(),
+         credentialDataSource: CredentialDataSource = defaultCredentialDataSource())
+    {
+        self.credentialDataSource = credentialDataSource
+        self.tokenStorage = tokenStorage
 
-    @CredentialActor
-    func resetToDefault() {
-        _tokenStorage = nil
-        _credentialDataSource = nil
+        self.credentialDataSource.delegate = self
+        self.tokenStorage.delegate = self
     }
-
-    nonisolated func observe(oauth2 client: OAuth2Client) {
+    
+    func observe(oauth2 client: OAuth2Client) {
         client.add(delegate: self)
     }
 }
 
 extension CredentialCoordinatorImpl: OAuth2ClientDelegate {
-    nonisolated func oauth(client: OAuth2Client, didRefresh token: Token, replacedWith newToken: Token?) {
+    func oauth(client: OAuth2Client, didRefresh token: Token, replacedWith newToken: Token?) {
         guard let newToken = newToken else {
             return
         }
 
-        withIsolationSync {
-            do {
-                try await self.tokenStorage.replace(token: token.id,
-                                                    with: newToken,
-                                                    security: nil)
-            } catch {
-                print("Error happened refreshing: \(error)")
-            }
+        do {
+            try tokenStorage.replace(token: token.id, with: newToken, security: nil)
+        } catch {
+            print("Error happened refreshing: \(error)")
         }
     }
 }
 
 extension CredentialCoordinatorImpl: TokenStorageDelegate {
-    func token(storage: any TokenStorage, defaultChanged id: String?) {
+    func token(storage: TokenStorage, defaultChanged id: String?) {
         guard _default?.id != id else { return }
 
         if let id = id,
@@ -232,44 +164,35 @@ extension CredentialCoordinatorImpl: TokenStorageDelegate {
             _default = nil
         }
 
-        let credential = _default
-        Task { @MainActor in
-            TaskData.notificationCenter.post(name: .defaultCredentialChanged,
-                                             object: credential)
-        }
+        NotificationCenter.default.post(name: .defaultCredentialChanged,
+                                        object: _default)
     }
     
-    func token(storage: any TokenStorage, added id: String, token: Token) {
+    func token(storage: TokenStorage, added id: String, token: Token) {
     }
     
-    func token(storage: any TokenStorage, removed id: String) {
+    func token(storage: TokenStorage, removed id: String) {
     }
     
-    func token(storage: any TokenStorage, replaced id: String, with newToken: Token) {
+    func token(storage: TokenStorage, replaced id: String, with newToken: Token) {
         // Doing nothing with this, for now...
     }
     
 }
 
 extension CredentialCoordinatorImpl: CredentialDataSourceDelegate {
-    func credential(dataSource: any CredentialDataSource, created credential: Credential) {
+    func credential(dataSource: CredentialDataSource, created credential: Credential) {
         credential.coordinator = self
-
-        deferToMainActor {
-            TaskData.notificationCenter.post(name: .credentialCreated,
-                                             object: credential)
-        }
+        
+        NotificationCenter.default.post(name: .credentialCreated, object: credential)
     }
     
-    func credential(dataSource: any CredentialDataSource, removed credential: Credential) {
+    func credential(dataSource: CredentialDataSource, removed credential: Credential) {
         credential.coordinator = nil
 
-        deferToMainActor {
-            TaskData.notificationCenter.post(name: .credentialRemoved,
-                                             object: credential)
-        }
+        NotificationCenter.default.post(name: .credentialRemoved, object: credential)
     }
     
-    func credential(dataSource: any CredentialDataSource, updated credential: Credential) {
+    func credential(dataSource: CredentialDataSource, updated credential: Credential) {
     }
 }

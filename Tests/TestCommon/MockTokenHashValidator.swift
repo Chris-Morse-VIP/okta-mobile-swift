@@ -11,15 +11,9 @@
 //
 
 import Foundation
-
-#if !COCOAPODS
-import CommonSupport
-#endif
-
 @testable import AuthFoundation
 
-class MockTokenHashValidator: @unchecked Sendable, TokenHashValidator {
-    @LockedValue
+class MockTokenHashValidator: TokenHashValidator {
     var error: JWTError?
     private(set) var string: String?
     private(set) var idToken: JWT?

@@ -13,18 +13,14 @@
 import Foundation
 import AuthFoundation
 
-struct WebAuthnChallengeRequest: AuthenticationFlowRequest {
-    typealias Flow = DirectAuthenticationFlow
-    
+struct WebAuthnChallengeRequest {
     let url: URL
     let clientConfiguration: OAuth2Client.Configuration
-    let context: Flow.Context
     let loginHint: String?
     let mfaToken: String?
 
     init(openIdConfiguration: OpenIdConfiguration,
          clientConfiguration: OAuth2Client.Configuration,
-         context: DirectAuthenticationFlow.Context,
          loginHint: String? = nil,
          mfaToken: String? = nil) throws
     {
@@ -34,7 +30,6 @@ struct WebAuthnChallengeRequest: AuthenticationFlowRequest {
         
         self.url = url
         self.clientConfiguration = clientConfiguration
-        self.context = context
         self.loginHint = loginHint
         self.mfaToken = mfaToken
     }
@@ -46,18 +41,11 @@ extension WebAuthnChallengeRequest: APIRequest, APIRequestBody {
     var httpMethod: APIRequestMethod { .post }
     var contentType: APIContentType? { .formEncoded }
     var acceptsType: APIContentType? { .json }
-    var category: AuthFoundation.OAuth2APIRequestCategory { .other }
-    var bodyParameters: [String: any APIRequestArgument]? {
-        var result = clientConfiguration.parameters(for: category) ?? [:]
-        
-        // Only supply context parameters (e.g. intent, max_age, nonce, etc) on the initial request
-        if mfaToken == nil {
-            result.merge(context.parameters(for: category))
-        }
-        
-        result.merge([
-            "challenge_hint": GrantType.webAuthn
-        ])
+    var bodyParameters: [String: Any]? {
+        var result: [String: Any] = [
+            "client_id": clientConfiguration.clientId,
+            "challenge_hint": GrantType.webAuthn.rawValue
+        ]
         
         if let loginHint = loginHint {
             result["login_hint"] = loginHint
@@ -67,8 +55,8 @@ extension WebAuthnChallengeRequest: APIRequest, APIRequestBody {
             result["mfa_token"] = mfaToken
         }
         
-        if result["client_id"] == nil {
-            result["client_id"] = clientConfiguration.clientId
+        if let parameters = clientConfiguration.authentication.additionalParameters {
+            result.merge(parameters, uniquingKeysWith: { $1 })
         }
 
         return result
@@ -76,7 +64,7 @@ extension WebAuthnChallengeRequest: APIRequest, APIRequestBody {
 }
 
 extension WebAuthn.AuthenticatorAssertionResponse: HasTokenParameters {
-    func tokenParameters(currentStatus: DirectAuthenticationFlow.Status?) -> [String: any APIRequestArgument] {
+    func tokenParameters(currentStatus: DirectAuthenticationFlow.Status?) -> [String: String] {
         var result = [
             "clientDataJSON": clientDataJSON,
             "authenticatorData": authenticatorData,

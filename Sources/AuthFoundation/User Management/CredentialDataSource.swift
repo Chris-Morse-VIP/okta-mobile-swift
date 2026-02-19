@@ -12,21 +12,20 @@
 
 import Foundation
 
-#if canImport(FoundationNetworking)
+#if os(Linux)
 import FoundationNetworking
 #endif
 
 /// Protocol that enables a developer to interact with, and override, the default behavior for the lifecycle of ``Credential`` instances.
 ///
 /// A default implementation is provided, but for advanced use-cases, you may implement this protocol yourself and assign an instance to the ``Credential/credentialDataSource`` property.
-@CredentialActor
-public protocol CredentialDataSource: Sendable {
+public protocol CredentialDataSource {
     /// Mandatory delegate property that is used to communicate when credentials within this data source are created or changed.
-    var delegate: (any CredentialDataSourceDelegate)? { get set }
+    var delegate: CredentialDataSourceDelegate? { get set }
 
     /// Enables developers to provide a custom URLSession when a credential is created for the given token.
     /// - Returns: URLSession to be used for this token, or `nil` to accept the default behavior.
-    func urlSession(for token: Token) -> any URLSessionProtocol
+    func urlSession(for token: Token) -> URLSessionProtocol
     
     /// Returns the number of credential objects currently cached within this datasource.
     ///
@@ -42,7 +41,7 @@ public protocol CredentialDataSource: Sendable {
     ///
     /// The implementation should ensure that no duplicate user instances should be created for the given token. It is recommended that the method be threadsafe as well.
     /// - Returns: Credential for the given token, either newly-created or previously cached.
-    func credential(for token: Token, coordinator: any CredentialCoordinator) -> Credential
+    func credential(for token: Token, coordinator: CredentialCoordinator) -> Credential
     
     /// Removes the given credential from the datasource.
     ///

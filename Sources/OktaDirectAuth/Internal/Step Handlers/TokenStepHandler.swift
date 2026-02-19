@@ -17,16 +17,15 @@ struct TokenStepHandler: StepHandler {
     let flow: DirectAuthenticationFlow
     let request: any OAuth2TokenRequest
     
-    func process() async throws -> DirectAuthenticationFlow.Status {
-        do {
-            let response = try await flow.client.exchange(token: request)
-            return .success(response.result)
-        } catch {
-            if let status = try DirectAuthenticationFlow.Status(error) {
-                return status
+    func process(completion: @escaping (Result<DirectAuthenticationFlow.Status, DirectAuthenticationFlowError>) -> Void) {
+        flow.client.exchange(token: request) { result in
+            switch result {
+            case .failure(let error):
+                flow.process(error, completion: completion)
+                
+            case .success(let response):
+                flow.send(success: response, completion: completion)
             }
-
-            throw error
         }
     }
 }

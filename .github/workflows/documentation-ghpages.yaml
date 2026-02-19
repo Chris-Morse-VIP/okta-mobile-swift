@@ -4,55 +4,50 @@ on:
   push:
     branches:
       - master
-    tags:
-      - '*'
 
 env:
-  DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
-  DOCC_JSON_PRETTYPRINT: YES
+  DEVELOPER_DIR: /Applications/Xcode_14.2.app/Contents/Developer
   NSUnbufferedIO: YES 
 
+# NOTE: The DocC `generate-documentation` plugin does not handle the 
+#       hostingBasePath well. In particular, it doesn't properly handle
+#       multiple child paths. Furthermore, the current 1.0.0 version of
+#       the plugin doesn't handle updates to the index.html or *.js
+#       files.
+#
+#       This workflow should be revisited once Xcode 14 GA is released
+#       so the newer DocC utilities can be utilized.
 jobs:
   ExportToGHPages:
     name: Export to Github Pages
-    runs-on: macos-15
+    runs-on: macos-12
     steps:
     - uses: actions/checkout@master
     - name: Build Documentation
       run: |
         set +ex
-        VERSION=${{ github.ref_name }}
-        if [[ "$VERSION" = "master" ]]; then
+        VERSION=$(git describe --tags 2>/dev/null)
+        if [[ $? -ne 0 ]]; then
             VERSION=development
         fi
         set -e
         export DOCC_JSON_PRETTYPRINT=YES
 
-        TARGET_LIST=""
-
-        mkdir -p "docs/$VERSION"
-
-        echo "Initializing target list"
         for TARGET in $(swift package describe --type json | jq ".products[].name" | sed -e 's/"//g'); do
-            echo "🎯 $TARGET"
+            echo "Building $TARGET"
             NAME=$(echo "$TARGET" | tr '[:upper:]' '[:lower:]')
-            TARGET_LIST="$TARGET_LIST --target $TARGET"
+            mkdir -p docs/$VERSION/$NAME
+            swift package \
+                --allow-writing-to-directory docs \
+                generate-documentation \
+                --target $TARGET \
+                --disable-indexing \
+                --transform-for-static-hosting \
+                --hosting-base-path okta-mobile-swift/$VERSION/$NAME \
+                --output-path docs/$VERSION/$NAME
+            sed -I -e "s#<head>#<head><meta http-equiv='refresh' content='0;url=./documentation/$NAME/'>#" \
+                docs/$VERSION/$NAME/index.html
         done
-
-        echo
-        echo "📓 Generating combined documentation"
-
-        swift package --allow-writing-to-directory docs generate-documentation \
-            --disable-indexing \
-            --transform-for-static-hosting \
-            --hosting-base-path "okta-mobile-swift/$VERSION" \
-            --output-path "docs/$VERSION" \
-            --include-extended-types \
-            --symbol-graph-minimum-access-level public \
-            --enable-experimental-combined-documentation \
-            --enable-experimental-external-link-support \
-            --enable-experimental-overloaded-symbol-presentation \
-            $TARGET_LIST
     - name: Deploy documentation to Github Pages
       uses: peaceiris/actions-gh-pages@v3
       with:

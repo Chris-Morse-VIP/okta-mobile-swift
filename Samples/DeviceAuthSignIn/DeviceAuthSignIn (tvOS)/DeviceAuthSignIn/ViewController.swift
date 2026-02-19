@@ -11,7 +11,7 @@
 //
 
 import UIKit
-import OAuth2Auth
+import OktaOAuth2
 import CoreImage.CIFilterBuiltins
 
 class ViewController: UIViewController {
@@ -38,9 +38,9 @@ class ViewController: UIViewController {
         if !domain.isEmpty,
            let issuerUrl = URL(string: "https://\(domain)")
         {
-            flow = DeviceAuthorizationFlow(issuerURL: issuerUrl,
+            flow = DeviceAuthorizationFlow(issuer: issuerUrl,
                                            clientId: clientId,
-                                           scope: "openid profile email offline_access")
+                                           scopes: "openid profile email offline_access")
         } else {
             DispatchQueue.main.async {
                 let alert = UIAlertController(title: "Client not configured", message: "Please update ViewController.swift", preferredStyle: .alert)
@@ -83,7 +83,7 @@ class ViewController: UIViewController {
         present(alert, animated: true)
     }
     
-    func show(_ context: DeviceAuthorizationFlow.Verification) {
+    func show(_ context: DeviceAuthorizationFlow.Context) {
         update(prompt: context.verificationUri)
         update(qrCode: context.verificationUriComplete)
         update(code: context.userCode)
@@ -94,7 +94,7 @@ class ViewController: UIViewController {
             openAuthenticationButton?.isHidden = false
         }
 
-        flow?.resume { result in
+        flow?.resume(with: context) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .failure(let error):

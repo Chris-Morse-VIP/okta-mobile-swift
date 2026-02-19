@@ -12,7 +12,7 @@
 
 import Foundation
 
-#if canImport(FoundationNetworking)
+#if os(Linux)
 import FoundationNetworking
 #endif
 

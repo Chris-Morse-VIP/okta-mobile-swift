@@ -13,7 +13,7 @@
 import Foundation
 
 /// Object defining the structure and settings of a PKCE challenge, including the verifier code, the encoded challenge, and the method used to exchange this information with the server.
-public struct PKCE: Sendable, Codable, Equatable {
+public struct PKCE: Codable, Equatable {
     /// The auto-generated code verifier data, randmonly-generated.
     public let codeVerifier: String
     
@@ -26,15 +26,12 @@ public struct PKCE: Sendable, Codable, Equatable {
     public let method: Method
     
     /// Enumeration describing the possible challenge encoding methods.
-    public enum Method: String, Sendable, Codable, APIRequestArgument {
+    public enum Method: String, Codable {
         /// SHA256-encoding method
         case sha256 = "S256"
         
         /// Plain encoding, for clients where SHA256-encoding is unavailable.
         case plain
-        
-        @_documentation(visibility: internal)
-        public var stringValue: String { rawValue }
     }
     
     public init?() {

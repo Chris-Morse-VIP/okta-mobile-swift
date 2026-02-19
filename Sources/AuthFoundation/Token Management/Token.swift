@@ -12,61 +12,21 @@
 
 import Foundation
 
-#if !COCOAPODS
-import CommonSupport
-@_exported import JSON
-#endif
-
 /// Token information representing a user's access to a resource server, including access token, refresh token, and other related information.
-public struct Token: Sendable, Codable, Equatable, Hashable, HasClaims, Expires {
-    public typealias ClaimType = TokenClaim
-
+public final class Token: Codable, Equatable, Hashable, Expires {
     /// The object used to ensure ID tokens are valid.
-    public static var idTokenValidator: any IDTokenValidator {
-        get {
-            lock.withLock { _idTokenValidator }
-        }
-        set {
-            lock.withLock { _idTokenValidator = newValue }
-        }
-    }
-
+    public static var idTokenValidator: IDTokenValidator = DefaultIDTokenValidator()
+    
     /// The object used to ensure access tokens can be validated against its associated ID token.
-    public static var accessTokenValidator: any TokenHashValidator  {
-        get {
-            lock.withLock { _accessTokenValidator }
-        }
-        set {
-            lock.withLock { _accessTokenValidator = newValue }
-        }
-    }
-
+    public static var accessTokenValidator: TokenHashValidator = DefaultTokenHashValidator(hashKey: .accessToken)
+    
     /// The object used to ensure device secrets are validated against its associated ID token.
-    public static var deviceSecretValidator: any TokenHashValidator  {
-        get {
-            lock.withLock { _deviceSecretValidator }
-        }
-        set {
-            lock.withLock { _deviceSecretValidator = newValue }
-        }
-    }
-
-    /// Coordinates important operations during token exchange.
-    ///
-    /// > Note: This property and interface is currently marked as internal, but may be exposed publicly in the future.
-    static var exchangeCoordinator: any TokenExchangeCoordinator  {
-        get {
-            lock.withLock { _exchangeCoordinator }
-        }
-        set {
-            lock.withLock { _exchangeCoordinator = newValue }
-        }
-    }
-
+    public static var deviceSecretValidator: TokenHashValidator = DefaultTokenHashValidator(hashKey: .deviceSecret)
+    
     /// The unique identifier for this token.
-    public let id: String
-
-    /// The date this token was issued at.
+    public internal(set) var id: String
+    
+    // The date this token was issued at.
     public let issuedAt: Date?
     
     /// The string type of the token (e.g. `Bearer`).
@@ -79,36 +39,28 @@ public struct Token: Sendable, Codable, Equatable, Hashable, HasClaims, Expires 
     public let accessToken: String
     
     /// The scopes requested when this token was generated.
-    public var scope: [String]? { self[.scope] }
+    public let scope: String?
     
     /// The refresh token, if requested.
-    public var refreshToken: String? { self[.refreshToken] }
+    public let refreshToken: String?
     
     /// The ID token, if requested.
     ///
-    /// For more information on working with an ID token, see ``HasClaims`` for more.
+    /// For more information on working with an ID token, see the <doc:WorkingWithClaims> documentation.
     public let idToken: JWT?
     
     /// Defines the context this token was issued from.
     public let context: Context
     
     /// The Device secret, if requested in scope.
-    public var deviceSecret: String? { self[.deviceSecret] }
+    public let deviceSecret: String?
     
-    /// The type of token issued to the client when using Token Exchange Flow.
-    public var issuedTokenType: String? { self[.issuedTokenType] }
-    
-    /// The claim payload container for this token
-    @_documentation(visibility: internal)
-    public var payload: [String: any Sendable] { json.payload }
-
     /// Indicates whether or not the token is being refreshed.
     public var isRefreshing: Bool {
-        refreshAction.isActive
+        refreshAction != nil
     }
     
-    public let json: JSON
-    internal let refreshAction: CoalescedResult<Token>
+    internal var refreshAction: CoalescedResult<Result<Token, OAuth2Error>>?
 
     /// Return the relevant token string for the given type.
     /// - Parameter kind: Type of token string to return
@@ -127,15 +79,16 @@ public struct Token: Sendable, Codable, Equatable, Hashable, HasClaims, Expires 
     }
     
     /// Validates the claims within this JWT token, to ensure it matches the given ``OAuth2Client``.
-    /// - Parameters:
-    ///   - client: Client to validate the token's claims against.
-    ///   - context: Optional ``IDTokenValidatorContext`` to use when validating the token.
-    public func validate(using client: OAuth2Client, with context: any IDTokenValidatorContext) async throws {
+    /// - Parameter client: Client to validate the token's claims against.
+    public func validate(using client: OAuth2Client, with context: IDTokenValidatorContext?) throws {
         guard let idToken = idToken else {
             return
         }
         
-        let issuer = try await client.openIdConfiguration().issuer
+        guard let issuer = client.openIdConfiguration?.issuer else {
+            throw TokenError.invalidConfiguration
+        }
+
         try Token.idTokenValidator.validate(token: idToken,
                                             issuer: issuer,
                                             clientId: client.configuration.clientId,
@@ -150,26 +103,37 @@ public struct Token: Sendable, Codable, Equatable, Hashable, HasClaims, Expires 
     /// Creates a new Token from a refresh token.
     /// - Parameters:
     ///   - refreshToken: Refresh token string.
-    ///   - scope: Optional array of scopes to request.
     ///   - client: ``OAuth2Client`` instance that corresponds to the client configuration initially used to create the refresh token.
-    public static func from(refreshToken: String,
-                            scope: [String]? = nil,
-                            using client: OAuth2Client) async throws -> Token
-    {
-        let request = Token.RefreshRequest(openIdConfiguration: try await client.openIdConfiguration(),
-                                           clientConfiguration: client.configuration,
-                                           refreshToken: refreshToken,
-                                           resource: "",
-                                           clientSecret: "",
-                                           scope: scope?.joined(separator: " "),
-                                           id: Token.RefreshRequest.placeholderId)
-        let response = try await client.exchange(token: request)
-        TaskData.notificationCenter.post(name: .tokenRefreshed, object: response.result)
-        return response.result
+    ///   - completion: Completion block invoked when a result is returned.
+    public static func from(refreshToken: String, using client: OAuth2Client, completion: @escaping (Result<Token, OAuth2Error>) -> Void) {
+        client.openIdConfiguration { result in
+            switch result {
+            case .success(let configuration):
+                let request = Token.RefreshRequest(openIdConfiguration: configuration,
+                                                   resource: "", 
+                                                   clientSecret: "",
+                                                   clientConfiguration: client.configuration,
+                                                   refreshToken: refreshToken,
+                                                   id: Token.RefreshRequest.placeholderId,
+                                                   configuration: [
+                                                    "client_id": client.configuration.clientId,
+                                                    "scope": client.configuration.scopes
+                                                ])
+                client.exchange(token: request) { result in
+                    switch result {
+                    case .success(let response):
+                        NotificationCenter.default.post(name: .tokenRefreshed, object: response.result)
+                        completion(.success(response.result))
+
+                    case .failure(let error):
+                        completion(.failure(.network(error: error)))
+                    }
+                }
+            case .failure(let error):
+                completion(.failure(error))
+            }
+        }
     }
-    
-    @_documentation(visibility: private)
-    public static let jsonDecoder = JSONDecoder()
     
     public static func == (lhs: Token, rhs: Token) -> Bool {
         lhs.context == rhs.context &&
@@ -188,87 +152,90 @@ public struct Token: Sendable, Codable, Equatable, Hashable, HasClaims, Expires 
         hasher.combine(deviceSecret)
     }
 
-    init(id: String,
-         issuedAt: Date,
-         context: Context,
-         json: JSON) throws
+    required init(id: String,
+                  issuedAt: Date,
+                  tokenType: String,
+                  expiresIn: TimeInterval,
+                  accessToken: String,
+                  scope: String?,
+                  refreshToken: String?,
+                  idToken: JWT?,
+                  deviceSecret: String?,
+                  context: Context)
     {
         self.id = id
         self.issuedAt = issuedAt
+        self.tokenType = tokenType
+        self.expiresIn = expiresIn
+        self.accessToken = accessToken
+        self.scope = scope
+        self.refreshToken = refreshToken
+        self.idToken = idToken
+        self.deviceSecret = deviceSecret
         self.context = context
-        self.json = json
-        self.refreshAction = .init(taskName: "Refresh Token \(id)")
-        
-        if let value = json[TokenClaim.idToken.rawValue]?.string {
-            idToken = try JWT(value)
-        } else {
-            idToken = nil
-        }
-        
-        // Ensure an access token is provided.
-        if let value: String = TokenClaim.optionalValue(.accessToken, in: json.payload) {
-            accessToken = value
-        }
-        
-        // When the custom MFA attestation ACR value is used, allow for
-        // an empty / unspecified access token.
-        else if let acrValues = context.clientSettings?["acr_values"]?.whitespaceSeparated,
-                acrValues.contains("urn:okta:app:mfa:attestation")
-        {
-            accessToken = ""
-        }
-        
-        // Throw an error when no access token is available.
-        else {
-            throw ClaimError.missingRequiredValue(key: TokenClaim.accessToken.rawValue)
-        }
-
-        tokenType = try TokenClaim.value(.tokenType, in: json.payload)
-        expiresIn = try TokenClaim.value(.expiresIn, in: json.payload)
     }
     
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeysV2.self)
-        try container.encode(id, forKey: .id)
-        try container.encodeIfPresent(issuedAt, forKey: .issuedAt)
-        try container.encode(context, forKey: .context)
-        try container.encode(json, forKey: .rawValue)
-    }
+    public required convenience init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        var context: Context
+        if container.contains(.context) {
+            context = try container.decode(Context.self, forKey: .context)
+        } else if let configuration = decoder.userInfo[.apiClientConfiguration] as? OAuth2Client.Configuration {
+            context = Context(configuration: configuration,
+                              clientSettings: decoder.userInfo[.clientSettings])
+        } else {
+            throw TokenError.contextMissing
+        }
+        context.clientSettings?[Token.Kind.refreshToken.rawValue] = try? container.decode(String.self, forKey: .refreshToken)
+        
+        let id: String
+        if let userInfoId = decoder.userInfo[.tokenId] as? String {
+            id = userInfoId
+        } else if container.contains(.id) {
+            id = try container.decode(String.self, forKey: .id)
+        } else {
+            id = UUID().uuidString
+        }
 
-    // MARK: Private properties / methods
-    private static let lock = Lock()
-    nonisolated(unsafe) private static var _idTokenValidator: any IDTokenValidator = DefaultIDTokenValidator()
-    nonisolated(unsafe) private static var _accessTokenValidator: any TokenHashValidator = DefaultTokenHashValidator(hashKey: .accessToken)
-    nonisolated(unsafe) private static var _deviceSecretValidator: any TokenHashValidator = DefaultTokenHashValidator(hashKey: .deviceSecret)
-    nonisolated(unsafe) private static var _exchangeCoordinator: any TokenExchangeCoordinator = DefaultTokenExchangeCoordinator()
+        var idToken: JWT?
+        if let idTokenString = try container.decodeIfPresent(String.self, forKey: .idToken) {
+            idToken = try JWT(idTokenString)
+        }
+        
+        self.init(id: id,
+                  issuedAt: try container.decodeIfPresent(Date.self, forKey: .issuedAt) ?? Date.nowCoordinated,
+                  tokenType: try container.decode(String.self, forKey: .tokenType),
+                  expiresIn: try container.decode(TimeInterval.self, forKey: .expiresIn),
+                  accessToken: try container.decode(String.self, forKey: .accessToken),
+                  scope: try container.decodeIfPresent(String.self, forKey: .scope),
+                  refreshToken: try container.decodeIfPresent(String.self, forKey: .refreshToken),
+                  idToken: idToken,
+                  deviceSecret: try container.decodeIfPresent(String.self, forKey: .deviceSecret),
+                  context: context)
+    }
 }
 
+#if swift(>=5.5.1)
+@available(iOS 13.0, tvOS 13.0, macOS 10.15, watchOS 6, *)
 extension Token {
     /// Creates a new Token from a refresh token.
     /// - Parameters:
     ///   - refreshToken: Refresh token string.
-    ///   - scope: Optional array of scopes to request.
     ///   - client: ``OAuth2Client`` instance that corresponds to the client configuration initially used to create the refresh token.
-    ///   - completion: Completion block invoked when a result is returned.
-    public static func from(refreshToken: String,
-                            scope: [String]? = nil,
-                            using client: OAuth2Client,
-                            completion: @Sendable @escaping (Result<Token, OAuth2Error>) -> Void)
-    {
-        Task {
-            do {
-                completion(.success(try await from(refreshToken: refreshToken,
-                                                   scope: scope,
-                                                   using: client)))
-            } catch {
-                completion(.failure(OAuth2Error(error)))
+    /// - Returns: Token created using the refresh token.
+    public static func from(refreshToken: String, using client: OAuth2Client) async throws -> Token {
+        try await withCheckedThrowingContinuation { continuation in
+            from(refreshToken: refreshToken, using: client) { result in
+                continuation.resume(with: result)
             }
         }
     }
 }
+#endif
 
 extension Token {
-    enum CodingKeysV1: String, CodingKey, CaseIterable {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case id
         case issuedAt
         case tokenType
@@ -280,41 +247,12 @@ extension Token {
         case deviceSecret
         case context
     }
-
-    enum CodingKeysV2: String, CodingKey, CaseIterable {
-        case id
-        case issuedAt
-        case context
-        case rawValue
-    }
 }
 
-@_documentation(visibility: private)
 extension CodingUserInfoKey {
     // swiftlint:disable force_unwrapping
     public static let tokenId = CodingUserInfoKey(rawValue: "tokenId")!
     public static let apiClientConfiguration = CodingUserInfoKey(rawValue: "apiClientConfiguration")!
-    public static let tokenContext = CodingUserInfoKey(rawValue: "tokenContext")!
     public static let clientSettings = CodingUserInfoKey(rawValue: "clientSettings")!
     // swiftlint:enable force_unwrapping
-}
-
-extension Token {
-    public enum TokenClaim: String, IsClaim, CaseIterable {
-        // Core OAuth 2.0 (RFC 6749)
-        case accessToken = "access_token"
-        case tokenType = "token_type"
-        case expiresIn = "expires_in"
-        case refreshToken = "refresh_token"
-        case scope
-        
-        // OpenID Connect (OIDC)
-        case idToken = "id_token"
-        
-        // OAuth 2.0 Token Exchange (RFC 8693)
-        case issuedTokenType = "issued_token_type"
-
-        // OpenID Connect Native SSO for Mobile Apps 1.0
-        case deviceSecret = "device_secret"
-    }
 }

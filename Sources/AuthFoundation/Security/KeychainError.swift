@@ -12,7 +12,7 @@
 
 import Foundation
 
-#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS) || (swift(>=5.10) && os(visionOS))
+#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
 
 /// Describes errors that may occur when interacting with the keychain.
 public enum KeychainError: Error {

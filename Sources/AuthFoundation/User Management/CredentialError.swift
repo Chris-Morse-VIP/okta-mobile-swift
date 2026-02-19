@@ -28,19 +28,19 @@ extension CredentialError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .missingCoordinator:
-            return NSLocalizedString("credential.missing_coordinator",
+            return NSLocalizedString("credential_missing_coordinator",
                                      tableName: "AuthFoundation",
                                      bundle: .authFoundation,
                                      comment: "")
             
         case .incorrectClientConfiguration:
-            return  NSLocalizedString("credential.incorrect_configuration",
+            return  NSLocalizedString("credential_incorrect_configuration",
                                       tableName: "AuthFoundation",
                                       bundle: .authFoundation,
                                       comment: "")
             
         case .metadataConsistency:
-            return NSLocalizedString("credential.metadata_consistency",
+            return NSLocalizedString("credential_metadata_consistency",
                                      tableName: "AuthFoundation",
                                      bundle: .authFoundation,
                                      comment: "")

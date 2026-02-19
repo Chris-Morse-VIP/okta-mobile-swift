@@ -16,24 +16,22 @@ import Foundation
 ///
 /// This provides a convenience mechanism for accessing information related to a user. It supports the ``HasClaims`` protocol, to simplify common operations against user information, and to provide consistency with the ``JWT`` class.
 ///
-/// For more information about the members to use, please refer to ``JSONClaimContainer``.
-public struct UserInfo: Sendable, Codable, JSONClaimContainer {
+/// For more information about the members to use, please refer to ``ClaimContainer``.
+public struct UserInfo: Codable, JSONClaimContainer {
     public typealias ClaimType = JWTClaim
 
-    public let json: JSON
+    public let payload: [String: Any]
     
-    @_documentation(visibility: internal)
-    public init(_ info: [String: any Sendable]) throws {
-        self.json = try JSON(info)
+    public init(_ info: [String: Any]) {
+        self.payload = info
     }
-
-    @_documentation(visibility: internal)
-    public init(_ json: JSON) throws {
-        self.json = json
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: JSONCodingKeys.self)
+        self.init(try container.decode([String: Any].self))
     }
 }
 
 extension UserInfo {
-    @_documentation(visibility: internal)
-    public static let jsonDecoder = JSONDecoder()
+    public static var jsonDecoder = JSONDecoder()
 }

@@ -11,7 +11,7 @@
 //
 
 import Foundation
-import OAuth2Auth
+import OktaOAuth2
 
 enum UserPasswordError: Error {
     case missingUsername
@@ -50,9 +50,9 @@ extension UserPasswordSignIn {
             throw UserPasswordError.invalidDomain
         }
         
-        let flow = ResourceOwnerFlow(issuerURL: issuerUrl,
+        let flow = ResourceOwnerFlow(issuer: issuerUrl,
                                      clientId: clientId,
-                                     scope: scope)
+                                     scopes: scopes)
         return flow
     }
 }

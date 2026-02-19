@@ -16,7 +16,7 @@ import TestCommon
 
 struct TestClaims: HasClaims {
     enum TestClaim: String, IsClaim {
-        case firstName, lastName, modifiedDate, webpage, roles, tags
+        case firstName, lastName, modifiedDate, webpage, roles
     }
     
     enum Role: String, ClaimConvertable, IsClaim {
@@ -24,7 +24,7 @@ struct TestClaims: HasClaims {
     }
 
     typealias ClaimType = TestClaim
-    let payload: [String: any Sendable]
+    let payload: [String: Any]
 }
 
 extension Date {
@@ -45,12 +45,7 @@ final class ClaimTests: XCTestCase {
             "lastName": "Doe",
             "modifiedDate": dateString,
             "webpage": "https://example.com/jane.doe/",
-            "roles": ["admin", "user"],
-            "scope": "openid profile offline_access",
-            "tags": [
-                "popular": "Popular Items",
-                "normal": "Normal Items",
-            ]
+            "roles": ["admin", "user"]
         ])
         let webpage = try XCTUnwrap(URL(string: "https://example.com/jane.doe/"))
         
@@ -62,40 +57,17 @@ final class ClaimTests: XCTestCase {
 
         XCTAssertEqual(container["modifiedDate"], dateString)
         XCTAssertEqual(container[.modifiedDate], dateString)
-        XCTAssertEqual(date, try container.value(for: "modifiedDate"))
-
-        XCTAssertEqual(container["scope"], "openid profile offline_access")
-        XCTAssertEqual(container["scope"] as [String]?, ["openid", "profile", "offline_access"])
-        XCTAssertEqual(container.value(for: "scope") as [String]?, ["openid", "profile", "offline_access"])
-        XCTAssertEqual(try container.value(for: "scope") as [String], ["openid", "profile", "offline_access"])
+        XCTAssertEqual(container.value(Date.self, for: "modifiedDate"), date)
 
         XCTAssertEqual(container["roles"], ["admin", "user"])
         XCTAssertEqual(container[.roles], ["admin", "user"])
-        XCTAssertEqual([TestClaims.Role.admin, TestClaims.Role.user], container[.roles])
-        XCTAssertEqual(try container.value(for: "roles"), ["admin", "user"])
-        XCTAssertEqual(try container.value(for: "roles"), ["admin", "user"])
-        XCTAssertEqual(try container.value(for: "roles") as [TestClaims.Role], [.admin, .user])
-        
-        XCTAssertEqual(try container.value(for: "tags"), [
-            "popular": "Popular Items",
-            "normal": "Normal Items",
-        ])
-        XCTAssertEqual(try container.value(for: .tags), [
-            "popular": "Popular Items",
-            "normal": "Normal Items",
-        ])
-        XCTAssertEqual(container["tags"], [
-            "popular": "Popular Items",
-            "normal": "Normal Items",
-        ])
-        XCTAssertEqual(container[.tags], [
-            "popular": "Popular Items",
-            "normal": "Normal Items",
-        ])
+        XCTAssertEqual(container.value([String].self, for: "roles"), ["admin", "user"])
+        XCTAssertEqual(container.arrayValue(String.self, for: "roles"), ["admin", "user"])
+        XCTAssertEqual(container.arrayValue(TestClaims.Role.self, for: "roles"), [.admin, .user])
         
         XCTAssertEqual(container["webpage"], "https://example.com/jane.doe/")
         XCTAssertEqual(container[.webpage], "https://example.com/jane.doe/")
-        XCTAssertEqual(webpage, try container.value(for: "webpage"))
+        XCTAssertEqual(container.value(URL.self, for: "webpage"), webpage)
 
         var url: URL?
         url = container["webpage"]

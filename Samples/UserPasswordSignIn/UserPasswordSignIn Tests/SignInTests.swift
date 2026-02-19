@@ -23,7 +23,7 @@ class SignInTests: XCTestCase {
         ProcessInfo.processInfo.environment["E2E_CLIENT_ID"]
     }()
     
-    lazy var scope: String? = {
+    lazy var scopes: String? = {
         ProcessInfo.processInfo.environment["E2E_SCOPES"]
     }()
     
@@ -45,14 +45,14 @@ class SignInTests: XCTestCase {
         let commandPath = try XCTUnwrap(commandPath)
         let domain = try XCTUnwrap(domain)
         let clientId = try XCTUnwrap(clientId)
-        let scope = try XCTUnwrap(scope)
+        let scopes = try XCTUnwrap(scopes)
         let username = try XCTUnwrap(username)
         let password = try XCTUnwrap(password)
 
         let command = Command(commandPath, arguments: [
             "--issuer", "https://\(domain)/oauth2/default",
             "--client-id", clientId,
-            "--scope", scope,
+            "--scopes", scopes,
             "--username", username,
             "--password", password,
         ])

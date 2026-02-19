@@ -15,7 +15,7 @@ import XCTest
 
 final class PercentEncodedQueryTests: XCTestCase {
     func testAPIRequestQuery() {
-        var query = [String: (any APIRequestArgument)?]()
+        var query = [String: APIRequestArgument?]()
         XCTAssertEqual(query.percentQueryEncoded, "")
         
         query["firstName"] = "Jane"

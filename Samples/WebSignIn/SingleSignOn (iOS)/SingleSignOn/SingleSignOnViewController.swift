@@ -10,7 +10,7 @@
 // See the License for the specific language governing permissions and limitations under the License.
 //
 
-import OAuth2Auth
+import OktaOAuth2
 import UIKit
 
 final class SingleSignOnViewController: UIViewController {
@@ -36,14 +36,14 @@ final class SingleSignOnViewController: UIViewController {
     
     private lazy var flow: TokenExchangeFlow? = {
         guard !domain.isEmpty,
-              let issuerUrl = URL(string: "https://\(domain)")
-        else {
+              let issuerUrl = URL(string: "https://\(domain)") else {
             return nil
         }
         
-        return TokenExchangeFlow(issuerURL: issuerUrl,
+        return TokenExchangeFlow(issuer: issuerUrl,
                                  clientId: clientId,
-                                 scope: "openid profile offline_access")
+                                 scopes: "openid profile offline_access",
+                                 audience: .default)
     }()
     
     override func viewDidLoad() {
@@ -53,9 +53,7 @@ final class SingleSignOnViewController: UIViewController {
         signIn(silent: true)
         
         signInButton.isEnabled = flow != nil
-        Task { @MainActor in
-            clientIdLabel.text = await flow?.client.configuration.clientId
-        }
+        clientIdLabel.text = flow?.client.configuration.clientId
     }
     
     @IBAction private func signIn() {
@@ -63,8 +61,6 @@ final class SingleSignOnViewController: UIViewController {
     }
     
     private func signIn(silent: Bool) {
-        guard let flow = flow else { return }
-
         startAnimating()
         guard let deviceToken = deviceToken,
               let idToken = idToken
@@ -93,17 +89,21 @@ final class SingleSignOnViewController: UIViewController {
             .actor(type: .deviceSecret, value: deviceToken),
             .subject(type: .idToken, value: idToken)
         ]
-
-        Task { @MainActor in
-            defer { self.stopAnimating() }
-            do {
-                let token = try await flow.start(with: tokens)
-                Credential.default = try Credential.store(token)
-            } catch {
-                let alert = UIAlertController(title: "Cannot sign in", message: error.localizedDescription, preferredStyle: .alert)
-                alert.addAction(.init(title: "OK", style: .default))
-
-                self.present(alert, animated: true)
+        
+        flow?.start(with: tokens) { result in
+            DispatchQueue.main.async {
+                self.stopAnimating()
+                
+                switch result {
+                case .failure(let error):
+                    let alert = UIAlertController(title: "Cannot sign in", message: error.localizedDescription, preferredStyle: .alert)
+                    alert.addAction(.init(title: "OK", style: .default))
+                    
+                    self.present(alert, animated: true)
+                    
+                case .success(let token):
+                    Credential.default = try? Credential.store(token)
+                }
             }
         }
     }

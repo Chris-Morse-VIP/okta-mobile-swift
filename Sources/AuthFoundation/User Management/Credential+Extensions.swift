@@ -12,13 +12,10 @@
 
 import Foundation
 
-#if canImport(FoundationNetworking)
+#if os(Linux)
 import FoundationNetworking
 #endif
 
-/// Custom notifications sent from the SDK for key events.
-///
-/// When important events occur within the SDK, your application may need to update its state when the default credential changes. Therefore you can observe the `defaultCredentialChanged` notification.
 extension Notification.Name {
     /// Notification broadcast when the ``Credential/default`` value changes.
     public static let defaultCredentialChanged = Notification.Name("com.okta.defaultCredentialChanged")
@@ -38,48 +35,32 @@ extension Notification.Name {
     public static let credentialRefreshFailed = Notification.Name("com.okta.credential.refresh.failed")
 }
 
+#if swift(>=5.5.1)
+@available(iOS 13.0, tvOS 13.0, macOS 10.15, watchOS 6, *)
 extension Credential {
-
     /// Attempt to refresh the token.
-    /// - Parameters:
-    ///   - clientSecret: The client secret to use when refreshing the token.
-    ///   - resource: The resource to use when refreshing the token.
-    ///   - completion: Completion block invoked when a result is returned.
-    public func refresh(clientSecret: String, resource: String, completion: @Sendable @escaping (Result<Void, OAuth2Error>) -> Void) {
-        Task {
-            do {
-                completion(.success(try await refresh(clientSecret: clientSecret, resource: resource)))
-            } catch {
-                completion(.failure(OAuth2Error(error)))
+    public func refresh(clientSecret: String, resource: String) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            refresh(clientSecret: clientSecret, resource: resource) { result in
+                continuation.resume(with: result)
             }
         }
     }
 
     /// Attempt to refresh the token.
-    /// - Parameters:
-    ///   - completion: Completion block invoked when a result is returned.
-    public func refresh(completion: @Sendable @escaping (Result<Void, OAuth2Error>) -> Void) {
-        Task {
-            do {
-                completion(.success(try await refresh(clientSecret: "", resource: "")))
-            } catch {
-                completion(.failure(OAuth2Error(error)))
+    public func refresh() async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            refresh(clientSecret: "", resource: "") { result in
+                continuation.resume(with: result)
             }
         }
     }
     
     /// Attempt to refresh the token if it either has expired, or is about to expire.
-    /// - Parameters:
-    ///   - graceInterval: The grace interval before a token is due to expire before it should be refreshed.
-    ///   - completion: Completion block invoked to indicate the status of the token, if the refresh was successful or if an error occurred.
-    public func refreshIfNeeded(graceInterval: TimeInterval = Credential.refreshGraceInterval,
-                                completion: @Sendable @escaping (Result<Void, OAuth2Error>) -> Void)
-    {
-        Task {
-            do {
-                completion(.success(try await refreshIfNeeded(graceInterval: graceInterval)))
-            } catch {
-                completion(.failure(OAuth2Error(error)))
+    public func refreshIfNeeded(graceInterval: TimeInterval = Credential.refreshGraceInterval) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            refreshIfNeeded(graceInterval: graceInterval) { result in
+                continuation.resume(with: result)
             }
         }
     }
@@ -108,13 +89,10 @@ extension Credential {
     /// 1. Does not have a refresh token and the ``Token/RevokeType/accessToken`` type is supplied.
     /// - Parameters:
     ///   - type: The token type to revoke, defaulting to `.all`.
-    ///   - completion: Completion block called when the operation completes.
-    public func revoke(type: Token.RevokeType = .all, completion: @Sendable @escaping (Result<Void, OAuth2Error>) -> Void) {
-        Task {
-            do {
-                completion(.success(try await revoke(type: type)))
-            } catch {
-                completion(.failure(OAuth2Error(error)))
+    public func revoke(type: Token.RevokeType = .all) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            revoke(type: type) { result in
+                continuation.resume(with: result)
             }
         }
     }
@@ -122,13 +100,11 @@ extension Credential {
     /// Fetches the user info for this user.
     ///
     /// In addition to passing the result to the provided completion block, a successful request will result in the ``UserInfo`` property being set with the new value for later use.
-    /// - Parameter completion: Optional completion block to be invoked when a result is returned.
-    public func userInfo(completion: @Sendable @escaping (Result<UserInfo, OAuth2Error>) -> Void) {
-        Task {
-            do {
-                completion(.success(try await userInfo()))
-            } catch {
-                completion(.failure(OAuth2Error(error)))
+    /// - Returns: The user info for this user.
+    public func userInfo() async throws -> UserInfo {
+        try await withCheckedThrowingContinuation { continuation in
+            userInfo { result in
+                continuation.resume(with: result)
             }
         }
     }
@@ -136,14 +112,12 @@ extension Credential {
     /// Introspect the token to check it for validity, and read the additional information associated with it.
     /// - Parameters:
     ///   - type: Type of token to introspect.
-    ///   - completion: Completion block invoked when a result is returned.
-    public func introspect(_ type: Token.Kind, completion: @Sendable @escaping (Result<TokenInfo, OAuth2Error>) -> Void) {
-        Task {
-            do {
-                completion(.success(try await introspect(type)))
-            } catch {
-                completion(.failure(OAuth2Error(error)))
+    public func introspect(_ type: Token.Kind) async throws -> TokenInfo {
+        try await withCheckedThrowingContinuation { continuation in
+            oauth2.introspect(token: token, type: type) { result in
+                continuation.resume(with: result)
             }
         }
     }
 }
+#endif

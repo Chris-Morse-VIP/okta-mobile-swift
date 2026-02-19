@@ -10,66 +10,59 @@
 // See the License for the specific language governing permissions and limitations under the License.
 //
 
+#if os(iOS) || os(macOS) || os(tvOS) || os(watchOS)
 import XCTest
 @testable import AuthFoundation
 import TestCommon
-
-#if swift(<6.0)
-extension UserDefaults: @unchecked Sendable {}
-#else
-extension UserDefaults: @unchecked @retroactive Sendable {}
-#endif
 
 final class UserDefaultTokenStorageTests: XCTestCase {
     var userDefaults: UserDefaults!
     var storage: UserDefaultsTokenStorage!
     
-    let token = try! Token(id: "TokenId",
-                           issuedAt: Date(),
-                           tokenType: "Bearer",
-                           expiresIn: 300,
-                           accessToken: "abcd123",
-                           scope: "openid",
-                           refreshToken: nil,
-                           idToken: nil,
-                           deviceSecret: nil,
-                           context: Token.Context(configuration: .init(issuerURL: URL(string: "https://example.com")!,
-                                                                       clientId: "clientid",
-                                                                       scope: "openid"),
-                                                  clientSettings: nil))
-    
-    let newToken = try! Token(id: "TokenId2",
-                              issuedAt: Date(),
-                              tokenType: "Bearer",
-                              expiresIn: 300,
-                              accessToken: "zxy987",
-                              scope: "openid",
-                              refreshToken: nil,
-                              idToken: nil,
-                              deviceSecret: nil,
-                              context: Token.Context(configuration: .init(issuerURL: URL(string: "https://example.com")!,
-                                                                          clientId: "clientid",
-                                                                          scope: "openid"),
-                                                     clientSettings: nil))
+    let token = Token(id: "TokenId",
+                      issuedAt: Date(),
+                      tokenType: "Bearer",
+                      expiresIn: 300,
+                      accessToken: "abcd123",
+                      scope: "openid",
+                      refreshToken: nil,
+                      idToken: nil,
+                      deviceSecret: nil,
+                      context: Token.Context(configuration: .init(baseURL: URL(string: "https://example.com")!,
+                                                                  clientId: "clientid",
+                                                                  scopes: "openid"),
+                                             clientSettings: nil))
 
-    override func setUp() async throws {
+    let newToken = Token(id: "TokenId2",
+                         issuedAt: Date(),
+                         tokenType: "Bearer",
+                         expiresIn: 300,
+                         accessToken: "zxy987",
+                         scope: "openid",
+                         refreshToken: nil,
+                         idToken: nil,
+                         deviceSecret: nil,
+                         context: Token.Context(configuration: .init(baseURL: URL(string: "https://example.com")!,
+                                                                     clientId: "clientid",
+                                                                     scopes: "openid"),
+                                                clientSettings: nil))
+
+    override func setUpWithError() throws {
         userDefaults = UserDefaults(suiteName: name)
         userDefaults.removePersistentDomain(forName: name)
-        storage = await UserDefaultsTokenStorage(userDefaults: userDefaults)
 
-        let tokenCount = await storage.allIDs.count
-        XCTAssertEqual(tokenCount, 0)
+        storage = UserDefaultsTokenStorage(userDefaults: userDefaults)
+        XCTAssertEqual(storage.allIDs.count, 0)
     }
     
-    override func tearDown() async throws {
+    override func tearDownWithError() throws {
         userDefaults.removePersistentDomain(forName: name)
 
         userDefaults = nil
         storage = nil
     }
-
-    @CredentialActor
-    func testDefaultToken() async throws {
+    
+    func testDefaultToken() throws {
         try storage.add(token: token, metadata: nil, security: [])
         XCTAssertEqual(storage.allIDs.count, 1)
         XCTAssertEqual(storage.defaultTokenID, token.id)
@@ -91,8 +84,7 @@ final class UserDefaultTokenStorageTests: XCTestCase {
         XCTAssertEqual(storage.allIDs.count, 0)
     }
 
-    @CredentialActor
-    func testImplicitDefaultToken() async throws {
+    func testImplicitDefaultToken() throws {
         XCTAssertNil(storage.defaultTokenID)
         
         XCTAssertNoThrow(try storage.add(token: token, metadata: nil, security: []))
@@ -101,8 +93,7 @@ final class UserDefaultTokenStorageTests: XCTestCase {
         XCTAssertEqual(storage.defaultTokenID, token.id)
     }
 
-    @CredentialActor
-    func testRemoveDefaultToken() async throws {
+    func testRemoveDefaultToken() throws {
         try storage.add(token: token, metadata: nil, security: [])
         try storage.setDefaultTokenID(token.id)
         XCTAssertEqual(storage.allIDs.count, 1)
@@ -112,3 +103,4 @@ final class UserDefaultTokenStorageTests: XCTestCase {
         XCTAssertNil(storage.defaultTokenID)
     }
 }
+#endif

@@ -1,14 +1,18 @@
 # ``OktaDirectAuth/DirectAuthenticationFlow``
 
+@Metadata {
+    @DocumentationExtension(mergeBehavior: append)
+}
+
 ## Usage
 
 You can create an instance of ``DirectAuthenticationFlow`` with your client settings, or you can use one of several convenience initializers to simplify the process.
 
 ```swift
 let flow = DirectAuthenticationFlow(
-    issuerURL: URL(string: "https://example.okta.com")!,
+    issuer: URL(string: "https://example.okta.com")!,
     clientId: "abc123client",
-    scope: "openid offline_access email profile")
+    scopes: "openid offline_access email profile")
 
 // Start authentication with a user's chosen factor.
 let status = try await flow.start("jane.doe@example.com",
@@ -19,7 +23,7 @@ case .success(let token):
     try Credential.store(token)
 case .mfaRequired(_):
     // MFA required, so challenge the user.
-    switch try await flow.resume(with: .otp(code: 123456)) {
+    switch try await flow.resume(status, with: .otp(code: 123456)) {
     case .success(let token):
         // Sign in successful with 2FA, so store the token.
         try Credential.store(token)
@@ -33,10 +37,9 @@ case .mfaRequired(_):
 
 ## Handling the authentication workflow
 
-Authentication factors are separated into three groups:
-* ``PrimaryFactor`` -- Used for initial authentication when calling ``start(_:with:context:)`` (or ``start(_:with:context:completion:)`` when using blocks).
-* ``SecondaryFactor`` -- Used for supplying additional MFA factors, with the ``resume(with:)-(SecondaryFactor)`` function (or ``resume(with:completion:)-(SecondaryFactor,_)`` when using blocks).
-* ``ContinuationFactor`` -- Used when an authentication factor requires user or develoepr interaction to continue authentication, using the ``resume(with:)-(ContinuationFactor)`` function (or ``resume(with:completion:)-(ContinuationFactor,_)`` when using blocks).
+Authentication factors are separated into two groups:
+* ``PrimaryFactor`` -- Used for initial authentication when calling ``start(_:with:)`` (or ``start(_:with:completion:)`` when using blocks)
+* ``SecondaryFactor`` -- Used for supplying additional MFA factors, with the ``resume(_:with:)`` function (or ``resume(_:with:completion:)`` when using blocks)
 
 Each of the fuctions using these factors returns an instance of ``Status``, which indicates whether or not authentication is successful, or if multiple factors are required.
 
@@ -48,28 +51,22 @@ Each of the fuctions using these factors returns an instance of ``Status``, whic
 
 - ``DirectAuthenticationFlow/init()``
 - ``DirectAuthenticationFlow/init(plist:)``
-- ``DirectAuthenticationFlow/init(issuerURL:clientId:scope:supportedGrants:additionalParameters:)``
-- ``DirectAuthenticationFlow/init(client:supportedGrants:additionalParameters:)``
+- ``DirectAuthenticationFlow/init(issuer:clientId:scopes:supportedGrants:)``
+- ``DirectAuthenticationFlow/init(supportedGrants:client:)``
 
 ### Starting MFA or signing in with 1FA
 
-- ``DirectAuthenticationFlow/start(_:with:context:)``
-- ``DirectAuthenticationFlow/start(_:with:context:completion:)``
+- ``DirectAuthenticationFlow/start(_:with:)``
+- ``DirectAuthenticationFlow/start(_:with:completion:)``
 - ``DirectAuthenticationFlow/PrimaryFactor``
 - ``DirectAuthenticationFlow/OOBChannel``
 
-### Resuming sign in with MFA
+### Continuing sign in with MFA
 
-- ``DirectAuthenticationFlow/resume(with:)-(SecondaryFactor)``
-- ``DirectAuthenticationFlow/resume(with:completion:)-(SecondaryFactor,_)``
+- ``DirectAuthenticationFlow/resume(_:with:)``
+- ``DirectAuthenticationFlow/resume(_:with:completion:)``
 - ``DirectAuthenticationFlow/SecondaryFactor``
 - ``DirectAuthenticationFlow/OOBChannel``
-
-### Continuing authenticating a factor
-
-- ``DirectAuthenticationFlow/resume(with:)-(ContinuationFactor)``
-- ``DirectAuthenticationFlow/resume(with:completion:)-(ContinuationFactor,_)``
-- ``DirectAuthenticationFlow/ContinuationFactor``
 
 ### Sign in responses
 
